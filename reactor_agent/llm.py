@@ -44,10 +44,28 @@ DEFAULT_TIMEOUT = 180
 DEFAULT_MAX_TOKENS = 4000
 DEFAULT_ATTEMPTS = 3
 
-# Statuses worth another attempt. 401 is here on purpose: under load the endpoint
-# returns UNAUTHORIZED and then recovers, so treating it as a credential problem
-# would abandon a run that only needed to wait.
-RETRYABLE_STATUS = (401, 408, 409, 425, 429, 500, 502, 503, 504)
+# Requests one client may send, across every retry and every repair round. The largest
+# legitimate need is small: the extraction normally succeeds on the first reply, and a
+# gap retry adds one or two more. Eight leaves room for the awkward cases while making
+# a burst impossible.
+DEFAULT_MAX_REQUESTS = 8
+
+# Statuses worth another attempt. 429 is here because the endpoint does recover, but
+# it is handled with a much longer wait than the transient 5xx family: retrying a rate
+# limit after two seconds is what turned one throttled intake into a burst.
+#
+# 401 is deliberately NOT here. It used to be, on the theory that the endpoint returns
+# UNAUTHORIZED under load and then recovers. That theory was measured against a gateway
+# where a spent or revoked credential also answers 401, and the retries only added
+# requests to an endpoint that was already refusing us. An authentication failure is
+# now final: `require_key`/`_send` report it and the caller stops.
+RETRYABLE_STATUS = (408, 409, 425, 429, 500, 502, 503, 504)
+
+# Seconds to wait before retrying a 429 when the endpoint sends no Retry-After header
+# (this client's transport returns only status and body, so the header is not visible
+# to it). Long enough for a per-minute window to roll over, short enough to give up in
+# a reasonable time.
+RATE_LIMIT_BACKOFF_SECONDS = 30.0
 
 
 class LlmError(Exception):
@@ -56,7 +74,7 @@ class LlmError(Exception):
     def __init__(self, message: str, *, kind: str = 'unknown', status: int | None = None,
                  attempts: int = 1, detail: str = '') -> None:
         super().__init__(message)
-        self.kind = kind              # transport | http | empty | bad_json | auth
+        self.kind = kind              # transport | http | empty | bad_json | auth | budget
         self.status = status
         self.attempts = attempts
         self.detail = detail
@@ -64,6 +82,12 @@ class LlmError(Exception):
     def to_dict(self) -> dict[str, Any]:
         return {'error': str(self), 'kind': self.kind, 'status': self.status,
                 'attempts': self.attempts, 'detail': self.detail[:300]}
+
+
+# Failures where asking again cannot help, so the fallback chain must not swallow them:
+#   auth   - the credential is missing, spent or revoked;
+#   budget - this client has already sent as many requests as it is allowed to.
+TERMINAL_ERROR_KINDS = ('auth', 'budget')
 
 
 @dataclass
@@ -173,7 +197,8 @@ class ChatClient:
                  transport: Callable[[str, dict, dict, int], tuple[int, str]] | None = None,
                  limiter: SlidingWindow | None = None,
                  sleeper: Callable[[float], None] = time.sleep,
-                 logger: Callable[[str], None] | None = None) -> None:
+                 logger: Callable[[str], None] | None = None,
+                 max_requests: int = DEFAULT_MAX_REQUESTS) -> None:
         self.config = config or LlmConfig.from_env()
         self._post = transport or _http_post
         self._limiter = limiter or SlidingWindow(
@@ -181,6 +206,12 @@ class ChatClient:
         self._sleep = sleeper
         self._log = logger or (lambda msg: None)
         self.calls = 0                # for tests and for run manifests
+        # A hard ceiling on HTTP requests for this client's lifetime. Without it a
+        # single intake could emit far more requests than it needed - the observed
+        # worst case was 18 - which is exactly the behaviour that turned a throttled
+        # endpoint into a refused one.
+        self.max_requests = max(1, int(max_requests))
+        self.budget_exhausted = False
 
     # ------------------------------------------------------------------ public
     def complete(self, system: str, user: str, *, schema: dict | None = None,
@@ -205,7 +236,11 @@ class ChatClient:
                 return self._call_with_schema(system, user, schema, schema_name,
                                               max_tokens, temperature)
             except LlmError as exc:
-                if exc.kind == 'auth':
+                if exc.kind in TERMINAL_ERROR_KINDS:
+                    # A spent credential or an exhausted budget: the plain-text request
+                    # would be sent with the same credential and the same budget, so
+                    # falling back only adds a request to an endpoint that has already
+                    # said no.
                     raise
                 failures.append(exc)
                 self._log('schema call failed (%s), falling back to plain text' % exc.kind)
@@ -214,7 +249,7 @@ class ChatClient:
             text = self._call_plain(system, user, max_tokens, temperature)
             return json.loads(strip_code_fence(text))
         except LlmError as exc:
-            if exc.kind == 'auth':
+            if exc.kind in TERMINAL_ERROR_KINDS:
                 raise
             failures.append(exc)
         except Exception as exc:                        # noqa: BLE001
@@ -246,12 +281,29 @@ class ChatClient:
         return payload
 
     def _send(self, payload: dict) -> dict[str, Any]:
-        """One request with retries on retryable statuses."""
+        """One request with retries on retryable statuses, inside a request budget.
+
+        401 is not retried (see `RETRYABLE_STATUS`), and 429 waits for
+        `RATE_LIMIT_BACKOFF_SECONDS` rather than the short transient backoff - the
+        endpoint has just told us it is busy, so waiting two seconds and asking again
+        is the worst possible response.
+        """
         url = self.config.base.rstrip('/') + '/chat/completions'
         headers = {'Authorization': 'Bearer ' + self.config.key,
                    'Content-Type': 'application/json'}
         last: LlmError | None = None
         for attempt in range(1, self.config.attempts + 1):
+            # Budget first: this is a hard ceiling, so the request that would cross it
+            # is never sent. The very first request of a call is always allowed, so an
+            # exhausted budget reports itself rather than looking like a transport
+            # failure.
+            if self.calls >= self.max_requests:
+                self.budget_exhausted = True
+                raise LlmError(
+                    'request budget exhausted after %d requests; stopping instead of '
+                    'asking the endpoint again. Raise TR_MAX_REQUESTS only if the '
+                    'endpoint is known to tolerate it.' % self.calls,
+                    kind='budget', attempts=attempt - 1)
             self._limiter.acquire()
             self.calls += 1
             try:
@@ -274,10 +326,21 @@ class ChatClient:
                                 kind='http', status=status, attempts=attempt,
                                 detail=text[:200])
             else:
-                raise LlmError('HTTP %d from the model endpoint' % status, kind='http',
+                # 401 is reported as `auth`, not `http`, so the fallback chain treats it
+                # as terminal: a rejected credential cannot be fixed by asking again in
+                # a different format.
+                kind = 'auth' if status == 401 else 'http'
+                raise LlmError('HTTP %d from the model endpoint' % status, kind=kind,
                                status=status, attempts=attempt, detail=text[:200])
             if attempt < self.config.attempts:
-                self._sleep(min(2 ** attempt, 15))
+                self._sleep(RATE_LIMIT_BACKOFF_SECONDS if status == 429
+                            else min(2 ** attempt, 15))
+        if self.calls >= self.max_requests:
+            self.budget_exhausted = True
+            raise LlmError(
+                'request budget exhausted after %d requests; the last attempt failed '
+                'with %s. Stopping instead of asking the endpoint again.'
+                % (self.calls, last), kind='budget', attempts=self.config.attempts)
         raise last or LlmError('request failed', kind='http',
                                attempts=self.config.attempts)
 
@@ -332,15 +395,22 @@ class ChatClient:
 def _most_diagnostic(failures: list[LlmError]) -> LlmError:
     """Pick the failure that best explains what went wrong.
 
-    A transport or HTTP failure tells the operator something actionable (the
-    endpoint is down, the model does not exist); a JSON parse error does not.
-    So an error carrying a status outranks one that does not, and 'empty' - which
-    specifically means the answer was truncated - outranks 'bad_json'.
+    A terminal failure outranks everything: "we stopped because the credential was
+    refused / the request budget ran out" is the operator's actual problem, and it must
+    not be reported as the transport error that happened to come first - which is what
+    made an exhausted budget look like a 503.
+
+    Below that, a transport or HTTP failure tells the operator something actionable
+    (the endpoint is down, the model does not exist) where a JSON parse error does not,
+    and 'empty' - which specifically means the answer was truncated - outranks
+    'bad_json'.
     """
     if not failures:
         return LlmError('no usable reply', kind='unknown')
 
     def rank(error: LlmError) -> int:
+        if error.kind in TERMINAL_ERROR_KINDS:
+            return 4
         if error.status is not None:
             return 3
         return {'transport': 3, 'empty': 2, 'http': 2, 'bad_json': 1}.get(error.kind, 0)

@@ -11,6 +11,7 @@ import json
 import unittest
 
 from reactor_agent.llm import (
+    RATE_LIMIT_BACKOFF_SECONDS,
     ChatClient,
     LlmConfig,
     LlmError,
@@ -99,6 +100,83 @@ class FallbackChain(unittest.TestCase):
             self.assertIn('error', payload)
 
 
+class RetryPolicy(unittest.TestCase):
+    """What is worth retrying, and how long to wait.
+
+    All of this was measured against a real gateway on 2026-10-03: a burst of retries
+    after the first 429 kept the limiter tripped, and the 401 that followed (a spent
+    credential) was retried because 401 used to be in the retryable list - adding
+    requests to an endpoint that had already refused us.
+    """
+
+    def test_a_401_is_not_retried(self):
+        c, t = client([(401, '{"error": "unauthorized"}')])
+        with self.assertRaises(LlmError) as ctx:
+            c.complete('s', 'u')
+        self.assertEqual(ctx.exception.status, 401)
+        self.assertEqual(len(t.requests), 1, 'one request, no retries')
+
+    def test_the_fallback_chain_does_not_swallow_a_401(self):
+        """No plain-text second attempt either: the credential is the problem."""
+        c, t = client([(401, '{}')])
+        with self.assertRaises(LlmError):
+            c.complete('s', 'u', schema=SCHEMA)
+        self.assertEqual(len(t.requests), 1)
+
+    def test_a_429_waits_the_long_backoff_not_the_short_one(self):
+        slept: list[float] = []
+        config = LlmConfig(base='https://example.test/v1', key='sk-test-' + 'x' * 30,
+                           min_interval=0, attempts=2)
+        transport = FakeTransport([(429, '{"code":"RATE_LIMITED"}'),
+                                   (200, reply('{"a": "ok"}'))])
+        c = ChatClient(config, transport=transport, sleeper=slept.append)
+        self.assertEqual(c.complete('s', 'u'), {'a': 'ok'})
+        self.assertIn(RATE_LIMIT_BACKOFF_SECONDS, slept)
+        self.assertNotIn(2.0, slept, 'the transient backoff must not be used for 429')
+
+    def test_a_503_still_uses_the_short_backoff(self):
+        slept: list[float] = []
+        config = LlmConfig(base='https://example.test/v1', key='sk-test-' + 'x' * 30,
+                           min_interval=0, attempts=2)
+        transport = FakeTransport([(503, 'busy'), (200, reply('{"a": "ok"}'))])
+        c = ChatClient(config, transport=transport, sleeper=slept.append)
+        self.assertEqual(c.complete('s', 'u'), {'a': 'ok'})
+        self.assertEqual(slept, [2.0])
+
+    def test_the_request_budget_stops_a_runaway_retry(self):
+        """The ceiling is global for the client, and a spent budget stops the chain.
+
+        Before this, an exhausted budget still fell through to the plain-text path,
+        which sent one more request - to an endpoint that had already been asked as
+        often as it was allowed to be.
+        """
+        c, t = client([(503, 'busy')] * 20, attempts=3)
+        c.max_requests = 3
+        for _ in range(2):
+            with self.assertRaises(LlmError) as ctx:
+                c.complete('s', 'u', schema=SCHEMA)
+            self.assertEqual(ctx.exception.kind, 'budget')
+        self.assertEqual(len(t.requests), 3, 'exactly the budget, and no fallback extra')
+        self.assertTrue(c.budget_exhausted)
+
+    def test_one_call_never_exceeds_the_budget(self):
+        c, t = client([(503, 'busy')] * 10, attempts=5)
+        c.max_requests = 2
+        with self.assertRaises(LlmError) as ctx:
+            c.complete('s', 'u')
+        self.assertEqual(ctx.exception.kind, 'budget')
+        self.assertLessEqual(len(t.requests), 2)
+
+    def test_the_budget_error_is_terminal(self):
+        """It must not be swallowed into a fallback attempt."""
+        c, t = client([(503, 'busy')] * 10, attempts=3)
+        c.max_requests = 1
+        with self.assertRaises(LlmError) as ctx:
+            c.complete('s', 'u', schema=SCHEMA)
+        self.assertEqual(ctx.exception.kind, 'budget')
+        self.assertEqual(len(t.requests), 1)
+
+
 class ThinkingDisabled(unittest.TestCase):
 
     def test_thinking_is_disabled_by_default(self):
@@ -123,14 +201,24 @@ class RateLimitAndRetry(unittest.TestCase):
         self.assertEqual(c.complete('s', 'u', schema=SCHEMA), {'a': 'after retry'})
         self.assertEqual(len(t.requests), 2)
 
-    def test_a_transient_401_is_retried_not_treated_as_a_bad_credential(self):
-        """Under load the endpoint returns UNAUTHORIZED and then recovers."""
+    def test_a_401_is_treated_as_a_credential_problem_not_as_load(self):
+        """401 used to be retried, on the theory that the endpoint returns it under
+        load and then recovers.
+
+        That theory was measured on 2026-10-03 and does not hold: once the gateway had
+        throttled a burst it answered `401 UNAUTHORIZED 未认证或登录已过期` for every
+        subsequent request, and the retries only added requests to an endpoint that was
+        already refusing us. A rejected credential is now terminal.
+        """
         c, t = client([
             (401, '{"code":"UNAUTHORIZED"}'),
-            (200, reply('{"a": "recovered"}')),
+            (200, reply('{"a": "should never be reached"}')),
         ], attempts=3)
-        self.assertEqual(c.complete('s', 'u', schema=SCHEMA), {'a': 'recovered'})
-        self.assertEqual(len(t.requests), 2)
+        with self.assertRaises(LlmError) as ctx:
+            c.complete('s', 'u', schema=SCHEMA)
+        self.assertEqual(ctx.exception.kind, 'auth')
+        self.assertEqual(ctx.exception.status, 401)
+        self.assertEqual(len(t.requests), 1, 'one request, then stop')
 
     def test_a_persistent_http_error_surfaces_its_status(self):
         # The fallback path makes its own attempts, so allow two full rounds.

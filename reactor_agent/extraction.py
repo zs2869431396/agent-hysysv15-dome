@@ -34,7 +34,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from .llm import ChatClient, LlmError
+from .llm import TERMINAL_ERROR_KINDS, ChatClient, LlmError
 from .units import (
     COMPOSITION_UNITS,
     FIELD_QUANTITY,
@@ -886,7 +886,9 @@ def extract(client: ChatClient, text: str, kind: str | None = None,
         except LlmError as exc:
             extraction.attempts = attempt
             extraction.error = str(exc)
-            if exc.kind == 'auth':
+            if exc.kind in TERMINAL_ERROR_KINDS:
+                # A spent credential or an exhausted request budget: asking again would
+                # just add requests to an endpoint that has already said no.
                 return extraction
             last_error = str(exc)
             continue
@@ -901,7 +903,7 @@ def extract(client: ChatClient, text: str, kind: str | None = None,
             except LlmError as exc:
                 extraction.attempts = attempt
                 extraction.error = str(exc)
-                if exc.kind == 'auth':
+                if exc.kind in TERMINAL_ERROR_KINDS:
                     return extraction
                 last_error = str(exc)
                 continue
