@@ -20,6 +20,7 @@ from typing import Any
 from ..adapters.hysys_cli import HysysCliAdapter
 from ..adapters.run_store import RunStore
 from ..pipeline import FAILED, PARTIAL, PASS, READY
+from ..report import results_view
 from .state import AgentState
 
 
@@ -60,8 +61,7 @@ def make_execute_node(adapter: HysysCliAdapter | None, run_root: Path,
                                 tool_status=(outcome.result or {}).get('status'),
                                 error_type=outcome.error_type, error=outcome.error,
                                 case_file=outcome.case_file)
-            executions.append({**outcome.summary(),
-                               'results': outcome.results()})
+            executions.append(results_view(outcome))
             if outcome.passed:
                 succeeded.append(case_id)
 

@@ -144,10 +144,24 @@ class ExecutionResult:
                 'mass_flow_kg_h': stream.get('mass_flow_kg_h'),
                 'mole_fractions': stream.get('mole_fractions') or {},
             }
+
+        # Fields the tool layer computes and the earlier report threw away. Each is
+        # fetched with `.get` so an older result file - which has none of them -
+        # degrades to None or an empty list instead of raising in the middle of
+        # explaining a run that already succeeded.
+        saturation = payload.get('solid_carbon_saturation') or {}
+        activity = saturation.get('carbon_activity') or {}
+        equilibrium_evidence = [
+            {key: item.get(key) for key in
+             ('reaction', 'fit_max_residual', 'lnK_exact_bar', 'basis_units')}
+            for item in (payload.get('equilibrium_evidence') or [])
+            if isinstance(item, dict)]
+
         return {
             'status': payload.get('status'),
             'reactor_kind': payload.get('reactor_kind'),
             'heat_duty_kW': payload.get('heat_duty_kW'),
+            'heat_duty_scope': checks.get('heat_duty_scope'),
             'streams': streams,
             'reactant_conversion_percent':
                 checks.get('reactant_conversion_percent') or {},
@@ -155,6 +169,37 @@ class ExecutionResult:
             'co_yield': checks.get('co_yield'),
             'worst_element_relative_error': checks.get('worst_element_relative_error'),
             'mass_relative_error': checks.get('mass_relative_error'),
+            'equilibrium_QK': checks.get('equilibrium_QK'),
+            'equilibrium_fit': equilibrium_evidence,
+            'solid_carbon_saturation': ({
+                'carbon_conversion_x': saturation.get('carbon_conversion_x'),
+                'water_limited_x_max': saturation.get('water_limited_x_max'),
+                'carbon_activity': {
+                    'via_methanation': activity.get('via_methanation'),
+                    'via_water_gas': activity.get('via_water_gas'),
+                    'via_boudouard': activity.get('via_boudouard'),
+                    'spread_decades': activity.get('spread_decades')},
+                'duty_by_reactor_kW': saturation.get('duty_by_reactor_kW'),
+                'library_carbon_gibbs_used':
+                    saturation.get('library_carbon_gibbs_used'),
+            } if saturation else None),
+            'gibbs_equilibrium': ({
+                'verdict': (checks.get('gibbs_equilibrium') or {}).get('verdict'),
+                'orders_from_equilibrium':
+                    (checks.get('gibbs_equilibrium') or {}
+                     ).get('orders_from_equilibrium'),
+            } if checks.get('gibbs_equilibrium') else None),
+            'independent_duty': ({
+                'verdict': (checks.get('independent_duty') or {}).get('verdict'),
+                'relative_deviation': (checks.get('independent_duty') or {}
+                                       ).get('relative_deviation'),
+            } if checks.get('independent_duty') else None),
+            'condensed_phase_location':
+                (checks.get('condensed_phase_location') or {}).get('verdict'),
+            'feed_molar_flows_kmol_h': payload.get('feed_molar_flows_kmol_h'),
+            'component_flows_kmol_h': payload.get('component_flows_kmol_h'),
+            'normal_volume_conversion':
+                (payload.get('native_flow_readback') or {}).get('conversion'),
             'solver_is_solving': payload.get('solver_is_solving'),
             'case_file': payload.get('case_file'),
             'warnings': payload.get('warnings') or [],

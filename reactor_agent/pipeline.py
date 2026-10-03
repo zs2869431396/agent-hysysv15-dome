@@ -40,6 +40,7 @@ from .compiler import CompileError, coal_assumption, compile_plan
 from .extraction import extract_verified, required_kind_for
 from .llm import ChatClient, LlmError
 from .normalize import NormalizationReport, normalize
+from .report import render_report, view_from_run
 from .schemas import (
     Assumption,
     ModelingPlan,
@@ -79,10 +80,18 @@ class AgentRun:
     # ------------------------------------------------------------- reporting
     @property
     def blocking_questions(self) -> list[str]:
+        return [q.question for q in self.blocking_question_objects()]
+
+    def blocking_question_objects(self) -> list[Question]:
+        """The open blocking questions themselves, defaults included.
+
+        The report needs the suggested answers as well as the text, and re-deriving
+        them from the plan here keeps one source of truth for what was asked.
+        """
         if self.plan is not None:
-            return [q.question for q in self.plan.blocking_questions()]
+            return self.plan.blocking_questions()
         if self.report is not None:
-            return [q.question for q in self.report.blocking]
+            return self.report.blocking
         return []
 
     @property
@@ -324,12 +333,11 @@ def run_pipeline(text: str, *, scenario_label: str = '', kind: str = '',
 
     if compiled.status == WAITING_INPUT:
         run.status = WAITING_INPUT
+        run.explanation = render_report(view_from_run(run))
         return _finish(run)
     if compiled.status == 'UNSUPPORTED' or not decision.is_executable():
         run.status = UNSUPPORTED
-        run.explanation = decision.explanation + (
-            ' 工具层当前无法执行该组合，因此没有运行模拟。' if decision.fallback_reason
-            else '')
+        run.explanation = render_report(view_from_run(run))
         return _finish(run)
 
     # ---------------------------------------------------------- ⑥ precheck
@@ -345,7 +353,7 @@ def run_pipeline(text: str, *, scenario_label: str = '', kind: str = '',
 
     # ----------------------------------------------------------- ⑦ execute
     if dry_run or adapter is None:
-        run.explanation = _describe_ready(compiled, decision)
+        run.explanation = render_report(view_from_run(run))
         return _finish(run)
 
     store = RunStore(run_root or Path('runs'), run_id=scenario_label or 'run')
@@ -382,7 +390,7 @@ def run_pipeline(text: str, *, scenario_label: str = '', kind: str = '',
 
     run.status = _status_from_executions(run.executions, len(compiled.cases),
                                          already_done=len(skipped))
-    run.explanation = _describe_executed(run)
+    run.explanation = render_report(view_from_run(run))
     return _finish(run)
 
 
@@ -405,45 +413,6 @@ def _status_from_executions(executions: list[ExecutionResult],
     if passed:
         return PARTIAL
     return FAILED
-
-
-def _describe_ready(plan: ModelingPlan, decision: SelectionDecision) -> str:
-    lines = ['已完成选型与规格编译，尚未运行模拟（dry run）。',
-             '反应器：%s（%s）' % (decision.execution_reactor,
-                                  decision.capability_status)]
-    if decision.was_substituted():
-        lines.append('注意：理论选型为 %s，实际执行为 %s。'
-                     % (decision.preferred_reactor, decision.execution_reactor))
-    for case in plan.cases:
-        spec = case.spec or {}
-        reactor = spec.get('reactor', {})
-        lines.append('工况 %s：%s，%s'
-                     % (case.case_id, reactor.get('thermal_mode'),
-                        ('出口 %g %s' % (reactor['outlet_temperature'],
-                                         reactor.get('outlet_temperature_unit', 'C')))
-                        if reactor.get('outlet_temperature') is not None
-                        else '无出口温度设定'))
-    return '\n'.join(lines)
-
-
-def _describe_executed(run: AgentRun) -> str:
-    lines = []
-    for outcome in run.executions:
-        payload = outcome.result or {}
-        checks = payload.get('checks') or {}
-        conversions = checks.get('reactant_conversion_percent') or {}
-        lines.append('工况 %s：%s（%.1fs）'
-                     % (outcome.case_id, payload.get('status') or outcome.status,
-                        outcome.seconds))
-        if conversions:
-            lines.append('  转化率：%s'
-                         % '，'.join('%s %.4f%%' % (k, v)
-                                    for k, v in conversions.items()))
-        if payload.get('heat_duty_kW') is not None:
-            lines.append('  热负荷：%.2f kW' % payload['heat_duty_kW'])
-        if outcome.error:
-            lines.append('  错误：%s' % outcome.error)
-    return '\n'.join(lines) if lines else '没有执行任何工况。'
 
 
 def _finish(run: AgentRun) -> AgentRun:

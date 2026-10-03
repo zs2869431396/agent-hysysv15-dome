@@ -372,5 +372,70 @@ Gibbs 对照没有被删掉：改为新测试 `test_gibbs_comparison_carries_no_
 
 **测试数量**：`reactor_agent` 288 → **310**（+22），全部通过；`hysys_tools` 184 仍全部通过。
 
+---
+
+## 步骤 8：解释层 `report.py` 与 adapter 结果透传
+
+### 改动
+
+- **8.1 `adapters/hysys_cli.py::ExecutionResult.results()`** 新增 10 个键，全部用
+  `.get` 读取，缺失时为 `None` 或空列表：`heat_duty_scope`、`equilibrium_QK`、
+  `equilibrium_fit`（每项只取 `reaction`/`fit_max_residual`/`lnK_exact_bar`/
+  `basis_units`）、`solid_carbon_saturation`（`carbon_conversion_x`、
+  `water_limited_x_max`、三条 `via_*` 与 `spread_decades`、`duty_by_reactor_kW`、
+  `library_carbon_gibbs_used`）、`gibbs_equilibrium`、`independent_duty`、
+  `condensed_phase_location`、`feed_molar_flows_kmol_h`、`component_flows_kmol_h`、
+  `normal_volume_conversion`。`warnings`/`assumptions`/`open_questions` 保持不变。
+- **8.2 新建 `reactor_agent/report.py`**：`render_report(view)` 是唯一入口；
+  `view_from_state(state)`、`view_from_run(run)`、`results_view(execution)` 是三个转换
+  函数。`_fmt`/`_num`/`_percent_map`/`_outlet_of`/`_case_block`/`_comparison_table`
+  从 `nodes/explain.py` 搬过来（`_fmt_signed` 本来就是 explain 里的函数，一并搬来）。
+  报告顺序与计划一致：选型 → 待确认问题 → 假设（分"本系统选定/用户确认/推导所得"
+  三组）→ 计算结果 → 工况对比与温度趋势 → 运行记录。
+  - `_outlet_of` 选主出口时跳过 Carbon 摩尔分数 ≥ 0.999 的物流；这类物流标题写成
+    `LIQUID（固相碳；HYSYS 物流名为 LIQUID，并非液态碳）`。
+  - 热负荷口径：`heat_duty_scope` 以 `Adiabatic` 开头写"绝热：热负荷为 0，出口温度为
+    计算结果"，否则写计划给的那句中文。
+  - `equilibrium_QK` 每个反应一行"`RXN-1`：Q/K = 1.0003，|ln(Q/K)| = 0.0003，判定 PASS"，
+    并写出拟合最大残差。
+  - CO 收率后加碳转化率、**氧平衡上限**、收率与上限之比（≥0.9 时加"CO 收率主要受进料中
+    的水量限制"）。上限只在"进料里唯一含氧组分是水"时输出，用
+    `feed_molar_flows_kmol_h` 与 `hysys_tools.core.atoms_of` 计算，不写死任何数值。
+  - 饱和碳块、校验行（元素守恒、质量、独立热负荷、Gibbs 平衡、凝相位置）、
+    工具层 `warnings` 逐条列出。
+  - 两个及以上工况时输出对比表，表后加 `_temperature_trend`：按出口温度从低到高取首尾
+    两个工况，算 CH4 转化率变化、H2 出口流量变化、CO/CO2 摩尔比变化、热负荷变化；
+    只有组分同时含 Methane/CO/CO2 时才写机理，且机理方向与实际相反时不写机理、
+    改写"与吸热重整的一般规律不一致，需要核查"。
+  - READY 且没有执行时写"规格已编译并通过预检，尚未运行模拟（dry run）。"（含 `dry run`）。
+- **8.3 接入两处调用方**：`nodes/explain.py` 只剩 `explain_node(state)` 调
+  `render_report(view_from_state(state))`，原私有函数改为从 `report` 重新导出；
+  `pipeline.py` 删除 `_describe_ready` 与 `_describe_executed`（仓库内无其他引用，
+  已确认），改用 `view_from_run`；`__main__.py` 写 `explanation.txt` 时直接写
+  `run.explanation`，不再自己拼"假设"和"待澄清问题"。
+- 顺带统一：`nodes/execute.py` 改用 `report.results_view(outcome)`，与 `view_from_run`
+  共用同一个执行项形状定义，避免两条路径各写一份 `{**summary(), 'results': ...}`。
+
+### 新增测试（`reactor_agent/test_report.py`，19 项）
+
+夹具直接用计划附录 B（气化）、附录 C（重整两工况）、附录 D（Q/K 片段）。
+
+- `BothCallersAgree`：同一个 view 经 `view_from_state` 与夹具 view 渲染出的文本完全相同；
+  READY 文本含 `dry run`。
+- `GasificationReport`：主出口是 VAPOUR；LIQUID 标为固相碳；**氧平衡上限 40.86%**；
+  "主要受进料中的水量限制"；热负荷口径；饱和碳块（X、三条途径、库 Carbon 为否）；
+  工具层提示列出；**进料含 Oxygen 时不再输出氧平衡上限**。
+- `ReformerReport`：出现"工况对比"；**+23.68 个百分点**；出现"吸热"与"水煤气变换放热"；
+  把两工况转化率对调后不出现"重整反应吸热"、出现"需要核查"；每个反应都有 Q/K 行与拟合
+  残差；只有一个工况时没有对比表与温度趋势。
+- `UnsupportedAndBlocked`：UNSUPPORTED 时写"没有运行模拟"；默认答案以"（默认：…）"出现
+  在问题后面。
+- `AdapterDegradesGracefully`：旧 `result.json`（没有任何新字段）不抛异常、新键为
+  `None`（`equilibrium_fit` 为空列表）；`results_view` 的形状正是 execute 节点存进
+  state 的那种。
+
+**测试数量**：`reactor_agent` 310 → **329**（+19），全部通过；`hysys_tools` 184 仍全部通过。
+
+
 
 

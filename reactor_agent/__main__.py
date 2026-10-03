@@ -342,16 +342,11 @@ def main(argv: list[str] | None = None) -> int:
                         summary['seconds'] or 0.0, summary['error'] or ''))
 
     written = write_run_artifacts(run, folder)
-    sections = [run.explanation or '(no explanation)']
-    if run.assumptions_we_made:
-        sections.append('假设（我方选择，非用户给定）：')
-        sections.extend('  - %s = %s（%s）' % (a['field'], a['value'], a['scope'])
-                        for a in run.assumptions_we_made)
-    if run.blocking_questions:
-        sections.append('待澄清问题：')
-        sections.extend('  - %s' % q for q in run.blocking_questions)
-    (folder / 'explanation.txt').write_text('\n'.join(sections) + '\n',
-                                            encoding='utf-8')
+    # The report already carries the assumptions and the open questions, each in its
+    # own section, so re-assembling them here produced a second, thinner copy of the
+    # same document.
+    (folder / 'explanation.txt').write_text((run.explanation or '(no explanation)')
+                                            + '\n', encoding='utf-8')
 
     _print_ascii('')
     _print_ascii('artifacts: %s' % folder)
