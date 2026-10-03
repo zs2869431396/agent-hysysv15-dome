@@ -15,21 +15,29 @@ Two rules this layer must never break:
 
   * **Do not invent.** A missing value stays missing; it becomes a blocking question.
     Filling it in here would launder a guess into something that looks extracted.
-  * **Do not convert what cannot be converted.** `Nm3/h` is carried through
-    untouched. The tool layer's own pre-check will refuse it, and the question about
-    standard conditions and which stream it describes is raised explicitly. Converting
-    it to kg/h would silently pick one of several defensible interpretations and the
-    resulting CO yield would be unfalsifiable.
+  * **Do not convert what cannot be converted without confirmation.** `Nm3/h` is
+    carried through untouched - the tool layer's own pre-check will refuse it - and the
+    question about standard conditions and which stream it describes is raised
+    explicitly. Once the user confirms a standard state, the total is passed on as the
+    tool layer's `normal_volume` input; it is never converted here, and never silently
+    to a mass flow.
 
 Every transformation is recorded in a report, so the explanation stage can say what
 was changed rather than presenting a normalised value as if the user had written it.
 """
 from __future__ import annotations
 
+import zlib
 from dataclasses import dataclass, field
 from typing import Any
 
-from hysys_tools.core import library_name
+from hysys_tools.core import (
+    NORMAL_VOLUME_UNITS,
+    atoms_of,
+    canonical,
+    library_name,
+    molar_mass_of,
+)
 
 from .extraction import reaction_grounding_failures, reaction_is_derived
 from .schemas import (
@@ -70,12 +78,31 @@ FLOW_UNITS = {
 }
 
 # Components the tool layer models as a solid. A solid that takes part in a reaction
-# changes what the capability table can promise: the Gibbs path with solid carbon has
-# never been through an acceptance run, so it is experimental rather than verified.
+# runs through the accepted saturated-carbon route, which the capability table now
+# records as verified.
 SOLID_COMPONENTS = {'Carbon'}
 
-# Units the tool layer cannot convert, and why - used to write the blocking question.
+# Units the tool layer cannot convert on its own, and why - used to write the
+# blocking question. A normal volume is in this set as well, but its question now
+# carries a default answer and, once confirmed, the accepted path below.
 VOLUMETRIC_UNITS = {'nm3/h', 'nm³/h', 'nm3/hr', 'm3/h', 'm³/h'}
+
+# The spellings `hysys_tools.core.NORMAL_VOLUME_UNITS` accepts, plus the canonical
+# spelling this layer rewrites to. Imported from the tool layer rather than copied
+# where it matters; this mapping only adds the alias forms that normalise onto it.
+_NORMAL_VOLUME_UNITS = frozenset(NORMAL_VOLUME_UNITS) | frozenset(
+    {'nm3/h', 'nm³/h', 'nm3/hr', 'nm^3/h', 'nm3h'})
+
+# The standard state offered as the default answer. The tool layer converts a normal
+# volume with R*(T+273.15)/P, so 0 C / 101.325 kPa is 22.414 m3/kmol.
+DEFAULT_STANDARD_TEMPERATURE_C = 0.0
+DEFAULT_STANDARD_PRESSURE_KPA = 101.325
+
+# Hours per year used to turn a chosen molar flow into an annual tonnage. Only ever
+# used together with the `a-feed-flow` assumption, which says the user left the figure
+# to us.
+OPERATING_HOURS_PER_YEAR = 8000
+
 
 # Chinese and common spellings the model will return, because the user writes Chinese
 # and the prompt asks it to copy what it sees. The tool layer maps only canonical
@@ -121,6 +148,18 @@ def resolve_species(name: str) -> str | None:
         return library_name(text)
     except Exception:                                   # noqa: BLE001
         return None
+
+
+def _stable_id(text: str) -> str:
+    """A short id that is the same in every process.
+
+    The question ids used to be built from `hash()`, which is salted per process
+    (`PYTHONHASHSEED`). A run pauses in one process and is resumed with `--answer` in
+    another, so the id the user was shown did not match the id the second process
+    looked for and the answer went nowhere. CRC32 is stable across processes.
+    """
+    return '%08x' % zlib.crc32(str(text).encode('utf-8'))
+
 
 
 # Names that stand for several distinct HYSYS components. A model may collapse
@@ -204,8 +243,8 @@ def _feed_composition(facts: dict[str, Any], report: 'NormalizationReport',
         name = resolve_species(entry.get('name'))
         if name is None:
             report.questions.append(Question(
-                id='q-composition-species-%d'
-                   % (abs(hash(str(entry.get('name')))) % 100000),
+                id='q-composition-species-%s'
+                   % _stable_id(str(entry.get('name'))),
                 field='feeds[0].fractions', blocking=True,
                 question='进料组成中的 %r 无法对应到 HYSYS 库组分，请确认它的标准名称。'
                          % str(entry.get('name')),
@@ -282,7 +321,7 @@ def _stoichiometry(reaction: dict, present: list[str],
         members, expanded = expand_ambiguous_species(raw_name, present)
         if not expanded:
             report.questions.append(Question(
-                id='q-reaction-species-%d' % (abs(hash(str(raw_name))) % 100000),
+                id='q-reaction-species-%s' % _stable_id(str(raw_name)),
                 field='reactions', blocking=True,
                 question='反应式中的组分 %r 无法对应到 HYSYS 库组分，请确认它的标准名称。'
                          % str(raw_name),
@@ -432,6 +471,65 @@ def flow_is_ours_to_choose(source_text: str) -> bool:
     return any(marker in text for marker in _CHOICE_MARKERS)
 
 
+def _flow_anchor(fractions: dict[str, float],
+                 reactions: list[ReactionSpec]) -> str:
+    """Which feed component the delegated total flow should be anchored on.
+
+    Anchoring on the largest fraction picked water for the reformer (1:2.7), which
+    then gave methane only 370 kmol/h instead of the 1000 kmol/h the exam intends.
+    The anchor has to be the carbon-bearing reactant the process is named after.
+    """
+    def contains_carbon(name: str) -> bool:
+        try:
+            return 'C' in atoms_of(name)
+        except Exception:                               # noqa: BLE001
+            return False
+
+    consumed = {canonical(name)
+                for reaction in reactions
+                for name, coefficient in reaction.stoichiometry.items()
+                if coefficient < 0}
+
+    carbon_reactants = [name for name in fractions
+                        if canonical(name) in consumed and contains_carbon(name)]
+    if carbon_reactants:
+        return max(carbon_reactants, key=lambda name: fractions[name])
+
+    if not reactions:
+        carbon_feed = [name for name in fractions if contains_carbon(name)]
+        if carbon_feed:
+            return max(carbon_feed, key=lambda name: fractions[name])
+
+    return max(fractions, key=lambda name: fractions[name])
+
+
+# The three xylene isomers, as the exam names them.
+_XYLENE_ISOMERS = ('o-Xylene', 'm-Xylene', 'p-Xylene')
+
+
+def _isomer_split_applies(reactions: list[ReactionSpec]) -> bool:
+    """True when the request treats the three xylene isomers as an equal split.
+
+    Two routes lead here, and both need the same declaration:
+
+    * `_stoichiometry` expanded the group name "二甲苯" / "C8H10" into three isomers;
+    * the model itself already wrote the three isomers with equal coefficients. That
+      is what the smoke record shows it doing, and the earlier code recorded nothing
+      in that case, so the equal split reached the spec undeclared.
+    """
+    for reaction in reactions:
+        coefficients = [reaction.stoichiometry.get(member)
+                        for member in _XYLENE_ISOMERS]
+        if any(value is None for value in coefficients):
+            continue
+        values = [abs(float(value)) for value in coefficients]
+        if all(value > 0 for value in values) and max(values) - min(values) <= 1e-9:
+            return True
+    return False
+
+
+
+
 # ------------------------------------------------------------------ the layer
 
 def normalize(facts: dict[str, Any], source_text: str, *,
@@ -509,17 +607,58 @@ def normalize(facts: dict[str, Any], source_text: str, *,
                 reason='题面只给出工况压力，且各工况不一致，无法确定进料压力。'))
 
     total_flow = facts.get('feed_total')
-    if total_flow is not None and str(flow_unit).casefold() in VOLUMETRIC_UNITS:
+    # The normal-volume basis is written by the answer router once the user confirms
+    # the stream and the standard state. Until then nothing is assumed, and nothing is
+    # converted either way.
+    normal_basis = facts.get('normal_volume_basis') or {}
+    normal_basis_temperature = normal_basis.get('standard_temperature_C')
+    normal_basis_pressure = normal_basis.get('standard_pressure_kPa')
+    normal_basis_given = (normal_basis_temperature is not None
+                          and normal_basis_pressure is not None)
+
+    if (total_flow is not None and normal_basis_given
+            and str(flow_unit).casefold() in _NORMAL_VOLUME_UNITS):
+        if flow_unit != 'Nm3/h':
+            report.record('normal volume unit %r -> %r' % (flow_unit, 'Nm3/h'))
+            flow_unit = 'Nm3/h'
+        report.record(
+            'normal volume confirmed by the user: %g %s at %g C / %g kPa; carried as '
+            'flow_input=normal_volume, not converted here'
+            % (float(total_flow), flow_unit, float(normal_basis_temperature),
+               float(normal_basis_pressure)))
+        report.assumptions.append(Assumption(
+            id='a-normal-volume', field='feeds[0].total_flow', source='user_answer',
+            accepted=True,
+            value='%g %s @ %g°C/%g kPa'
+                  % (float(total_flow), flow_unit,
+                     float(normal_basis_temperature),
+                     float(normal_basis_pressure)),
+            scope=('这是单股混合进料的总量；按理想气体摩尔体积换算，'
+                   '0°C/101.325 kPa 时为 22.414 m³/kmol，即 R(T+273.15)/P；'
+                   '由工具层换算成摩尔流量交给 HYSYS，'
+                   '不用 HYSYS 自带的 15°C 标准体积')))
+    elif total_flow is not None and str(flow_unit).casefold() in VOLUMETRIC_UNITS:
         # Raised as a blocking question rather than converted; see the docstring.
+        # A standard gas volume gets a default answer, because there is one reading
+        # the tool layer has accepted and the user only has to confirm it.
+        normal_volume_unit = str(flow_unit).casefold() in _NORMAL_VOLUME_UNITS
+        if normal_volume_unit:
+            question_text = (
+                '进料流量 %g %s 按什么理解？默认：单股混合进料的总量，'
+                '标准状态 0°C / 101.325 kPa。也可以回答其他标准状态（如 20°C），'
+                '或直接给出质量或摩尔流量（如 49086 kg/h）。'
+                % (float(total_flow), flow_unit))
+        else:
+            question_text = (
+                '进料流量 %g %s 指的是哪一股物流？请直接给出质量或摩尔流量。'
+                % (float(total_flow), flow_unit))
         report.questions.append(Question(
             id='q-volumetric-flow', field='feeds[0].total_flow_unit', blocking=True,
-            question='进料流量 %g %s 指的是哪一股物流、标准状态是什么？'
-                     '（例如 0°C/101.325 kPa 还是 20°C，以及它描述的是进料总量、'
-                     '水蒸气量还是出口合成气量）'
-                     % (float(total_flow), flow_unit),
-            reason='体积单位无法换算成摩尔或质量流量：Nm³ 只对气体有意义，而煤是'
-                   '固体、水是液体。不同解释会给出完全不同的 CO 收率，因此不能自行'
-                   '选定一种。'))
+            question=question_text,
+            default=('总进料，0°C/101.325 kPa' if normal_volume_unit else None),
+            reason=('体积单位无法换算成摩尔或质量流量：Nm³ 只对气体有意义，而煤是'
+                    '固体、水是液体。不同解释会给出完全不同的 CO 收率，因此不能自行'
+                    '选定一种。')))
         report.record('volumetric flow %g %s kept verbatim, NOT converted'
                       % (float(total_flow), flow_unit))
 
@@ -546,7 +685,7 @@ def normalize(facts: dict[str, Any], source_text: str, *,
         if resolved is None:
             # An unknown spelling is a question, not something to drop silently.
             report.questions.append(Question(
-                id='q-component-%d' % (abs(hash(name)) % 100000),
+                id='q-component-%s' % _stable_id(name),
                 field='fluid_package.components', blocking=True,
                 question='组分 %r 无法对应到 HYSYS 库组分，请确认它的标准名称。' % name,
                 reason='未知组分不能静默丢弃，否则物性包会缺少必要的组分；'
@@ -637,18 +776,30 @@ def normalize(facts: dict[str, Any], source_text: str, *,
 
     if total_flow is None and fractions and flow_is_ours_to_choose(source_text):
         # The user delegated the flow. Choose one at a defensible scale, anchored on
-        # the principal component so the stated ratio is preserved, and record it as
-        # an assumption - never as if it had been extracted.
-        principal = max(fractions, key=lambda name: fractions[name])
+        # the carbon-bearing reactant so the stated ratio is preserved, and record it
+        # as an assumption - never as if it had been extracted.
+        principal = _flow_anchor(fractions, reactions)
         share = fractions[principal]
         total_flow = DEFAULT_PRINCIPAL_KMOL_H / share
         flow_unit = 'kmol/h'
+        try:
+            annual_kt = (DEFAULT_PRINCIPAL_KMOL_H * molar_mass_of(principal)
+                         * OPERATING_HOURS_PER_YEAR / 1e6)
+        except Exception:                               # noqa: BLE001
+            annual_kt = None
+        if annual_kt is None:
+            scope = ('题目说明进料流量可以自定、未给数值；取 %s %g kmol/h'
+                     '（总进料 %g kmol/h，保持原有比例），属于中型装置的处理量'
+                     % (principal, DEFAULT_PRINCIPAL_KMOL_H, round(total_flow, 6)))
+        else:
+            scope = ('题目说明进料流量可以自定、未给数值；取 %s %g kmol/h'
+                     '（总进料 %g kmol/h，保持原有比例），按 %d h/a 计约 %.1f kt/a %s，'
+                     '属于中型装置的处理量'
+                     % (principal, DEFAULT_PRINCIPAL_KMOL_H, round(total_flow, 6),
+                        OPERATING_HOURS_PER_YEAR, annual_kt, principal))
         report.assumptions.append(Assumption(
             id='a-feed-flow', field='feeds[0].total_flow', value=round(total_flow, 6),
-            source='agent_default', accepted=False,
-            scope='%s at %g kmol/h, a mid-size plant scale; the request states the '
-                  'feed flow may be chosen but gives no figure'
-                  % (principal, DEFAULT_PRINCIPAL_KMOL_H)))
+            source='agent_default', accepted=False, scope=scope))
         report.record('feed flow chosen by us: %g kmol/h (%s at %g kmol/h), recorded '
                       'as an assumption' % (round(total_flow, 6), principal,
                                             DEFAULT_PRINCIPAL_KMOL_H))
@@ -677,6 +828,16 @@ def normalize(facts: dict[str, Any], source_text: str, *,
         total_flow=total_flow, total_flow_unit=flow_unit,
         temperature=facts.get('feed_temperature'), temperature_unit=temperature,
         pressure=pressure, pressure_unit=pressure_unit,
+        # Only the accepted normal-volume path writes these; a local flow keeps them
+        # at their defaults so the spec is unchanged.
+        flow_input=('normal_volume'
+                    if normal_basis_given
+                    and str(flow_unit).casefold() in _NORMAL_VOLUME_UNITS
+                    else 'local'),
+        standard_temperature_C=(float(normal_basis_temperature)
+                                if normal_basis_given else None),
+        standard_pressure_kPa=(float(normal_basis_pressure)
+                               if normal_basis_given else None),
         source_text=source_text[:200])
 
     # ------------------------------------------------------------- kinetics
@@ -715,8 +876,18 @@ def normalize(facts: dict[str, Any], source_text: str, *,
         report.assumptions.append(Assumption(
             id='a-solid-phase', field='phase', value='solid carbon present',
             source='derived', accepted=True,
-            scope='进料含参与反应的固体碳，该组合在能力表中为 experimental'
-                  '（尚未通过远程验收）'))
+            scope='进料含参与反应的固体碳，按 solid_carbon=saturation 组合流程执行'
+                  '（已随工具层验收）'))
+
+    # The xylene isomers are the one place the exam names several species without a
+    # ratio. Whichever way the split arises, it is an assumption of ours.
+    if _isomer_split_applies(reactions):
+        report.assumptions.append(Assumption(
+            id='a-isomer-split', field='reactions.stoichiometry',
+            value='o/m/p-Xylene 各 1/3', source='agent_default', accepted=False,
+            scope='题目列出邻、间、对三种二甲苯但未给比例，按等分处理；'
+                  '这不是工业选择性，也不是热力学预测'))
+
     for note in facts.get('missing_information') or []:
         report.notes.append('模型指出未提供：%s' % note)
     return request, report

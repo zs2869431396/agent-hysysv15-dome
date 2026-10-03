@@ -7,10 +7,14 @@ actually encoding an unstated assumption.
 """
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 import unittest
 
 from reactor_agent.normalize import (
     SPECIES_ALIASES,
+    _stable_id,
     flow_is_ours_to_choose,
     normalize,
     resolve_species,
@@ -422,7 +426,7 @@ class DelegatedChoices(unittest.TestCase):
         self.assertEqual(len(report.agent_choices), 1)
         assumption = report.agent_choices[0]
         self.assertEqual(assumption.source, 'agent_default')
-        self.assertIn('may be chosen', assumption.scope)
+        self.assertIn('可以自定', assumption.scope)
 
     def test_no_question_is_asked_about_a_value_we_were_told_to_pick(self):
         _, report = normalize(SMR_FACTS, self.DELEGATING, scenario_label='smr')
@@ -458,6 +462,131 @@ class OperatingCases(unittest.TestCase):
         request, _ = normalize(SMR_FACTS, 'text', scenario_label='smr')
         self.assertEqual(len({c.case_id for c in request.operating_cases}),
                          len(request.operating_cases))
+
+
+class NormalVolumeIsConfirmedBeforeItIsUsed(unittest.TestCase):
+    """Nm3/h gets a suggested answer, and only the answer unlocks the path.
+
+    The plan's central rule still holds: without the user's confirmation nothing is
+    converted and nothing is assumed. What changes is that there is now a default
+    answer to confirm, and confirming it hands the tool layer's own normal-volume
+    input a complete basis instead of an unanswerable question.
+    """
+
+    CONFIRMED_BASIS = {'standard_temperature_C': 0.0,
+                       'standard_pressure_kPa': 101.325}
+
+    def _confirmed(self):
+        facts = dict(GASIFICATION_FACTS,
+                     normal_volume_basis=dict(self.CONFIRMED_BASIS))
+        return normalize(facts, TOLUENE_TEXT, scenario_label='g')
+
+    def test_the_question_offers_the_documented_default(self):
+        _, report = normalize(GASIFICATION_FACTS, 'text', scenario_label='g')
+        question = next(q for q in report.questions if q.id == 'q-volumetric-flow')
+        self.assertEqual(question.default, '总进料，0°C/101.325 kPa')
+        self.assertIn('80000', question.question)
+        self.assertTrue(question.blocking)
+
+    def test_unconfirmed_answers_stay_local(self):
+        request, report = normalize(GASIFICATION_FACTS, 'text', scenario_label='g')
+        self.assertEqual(request.feeds[0].flow_input, 'local')
+        self.assertIsNone(request.feeds[0].standard_temperature_C)
+        self.assertNotIn('a-normal-volume', [a.id for a in report.assumptions])
+
+    def test_a_confirmed_basis_opens_the_normal_volume_path(self):
+        request, report = self._confirmed()
+        feed = request.feeds[0]
+        self.assertEqual(feed.flow_input, 'normal_volume')
+        self.assertEqual(feed.standard_temperature_C, 0.0)
+        self.assertEqual(feed.standard_pressure_kPa, 101.325)
+        self.assertEqual(feed.total_flow_unit, 'Nm3/h')
+        self.assertNotIn('q-volumetric-flow', ids(report.questions))
+        assumption = next(a for a in report.assumptions if a.id == 'a-normal-volume')
+        self.assertEqual(assumption.source, 'user_answer')
+        self.assertTrue(assumption.accepted)
+        self.assertIn('80000 Nm3/h @ 0°C/101.325 kPa', assumption.value)
+        self.assertIn('22.414', assumption.scope)
+        self.assertFalse(any('NOT converted' in a for a in report.applied))
+        self.assertTrue(any('normal volume confirmed' in a for a in report.applied))
+
+    def test_a_plain_operating_volume_gets_no_default(self):
+        """m3/h is a working volume, not a standard one: no suggested answer."""
+        facts = dict(GASIFICATION_FACTS, feed_unit='m3/h')
+        _, report = normalize(facts, 'text', scenario_label='g')
+        question = next(q for q in report.questions if q.id == 'q-volumetric-flow')
+        self.assertIsNone(question.default)
+
+    def test_the_confirmed_volume_is_not_converted_here(self):
+        request, _ = self._confirmed()
+        self.assertEqual(request.feeds[0].total_flow, 80000.0)
+        self.assertEqual(request.feeds[0].total_flow_unit, 'Nm3/h')
+
+
+class TheFlowIsAnchoredOnTheCarbonReactant(unittest.TestCase):
+    """Anchoring on the largest fraction gave methane 370 kmol/h instead of 1000."""
+
+    DELEGATING = ('我需要模拟甲烷蒸汽重整。进料是甲烷和水蒸气（摩尔比 1:2.7），'
+                  '进料流量可以自定，要求符合一个工厂一年正常的处理量。'
+                  '出口温度 710°C，压力 13.5 bar，进料温度 520℃。')
+
+    def _request(self):
+        request, report = normalize(SMR_FACTS, self.DELEGATING,
+                                    scenario_label='smr')
+        return request, report
+
+    def test_methane_carries_the_thousand(self):
+        request, _ = self._request()
+        feed = request.feeds[0]
+        self.assertAlmostEqual(feed.total_flow, 3700.0, places=6)
+        share = feed.fractions['Methane'] * feed.total_flow
+        self.assertAlmostEqual(share, 1000.0, places=6)
+
+    def test_the_scope_states_the_annual_tonnage(self):
+        _, report = self._request()
+        assumption = next(a for a in report.assumptions if a.id == 'a-feed-flow')
+        self.assertIn('128', assumption.scope)
+        self.assertIn('8000', assumption.scope)
+        self.assertIn('Methane', assumption.scope)
+
+
+class TheXyleneSplitIsDeclared(unittest.TestCase):
+
+    def test_an_equal_split_written_by_the_model_is_recorded(self):
+        """The smoke record shows the model splitting the isomers itself."""
+        _, report = normalize(TOLUENE_FACTS, TOLUENE_TEXT, scenario_label='t')
+        assumption = next(a for a in report.assumptions if a.id == 'a-isomer-split')
+        self.assertEqual(assumption.value, 'o/m/p-Xylene 各 1/3')
+        self.assertEqual(assumption.source, 'agent_default')
+        self.assertFalse(assumption.accepted)
+
+    def test_it_is_recorded_once_only(self):
+        _, report = normalize(TOLUENE_FACTS, TOLUENE_TEXT, scenario_label='t')
+        self.assertEqual([a.id for a in report.assumptions].count('a-isomer-split'), 1)
+
+    def test_a_request_without_the_isomers_gets_no_such_assumption(self):
+        _, report = normalize(SMR_FACTS, 'text', scenario_label='smr')
+        self.assertNotIn('a-isomer-split', [a.id for a in report.assumptions])
+
+
+class QuestionIdsSurviveAProcessBoundary(unittest.TestCase):
+    """`hash()` is salted per process, so ids changed between pause and resume."""
+
+    SCRIPT = ('from reactor_agent.normalize import _stable_id;'
+              'print(_stable_id("未知物质"), _stable_id("q-component-未知物质"))')
+
+    def test_the_same_text_gives_the_same_id_under_any_hash_seed(self):
+        outputs = []
+        for seed in ('1', '2'):
+            environment = dict(os.environ, PYTHONHASHSEED=seed)
+            result = subprocess.run(
+                [sys.executable, '-c', self.SCRIPT], capture_output=True, text=True,
+                cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                env=environment)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            outputs.append(result.stdout.strip())
+        self.assertEqual(outputs[0], outputs[1])
+        self.assertTrue(outputs[0])
 
 
 if __name__ == '__main__':

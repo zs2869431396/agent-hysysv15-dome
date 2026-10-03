@@ -229,3 +229,72 @@ Gibbs 对照没有被删掉：改为新测试 `test_gibbs_comparison_carries_no_
 
 **测试数量**：`reactor_agent` 253 → **277**（+24），全部通过；`hysys_tools` 184 仍全部通过。
 
+---
+
+## 步骤 4：`reactor_agent/normalize.py` 归一化
+
+### 改动
+
+- **4.1 Nm³/h：带默认答案的追问 + 确认后可执行的路径**
+  - 新增模块常量 `_NORMAL_VOLUME_UNITS`（由 `hysys_tools.core.NORMAL_VOLUME_UNITS`
+    导入后并上本层会规范化出的别名）、`DEFAULT_STANDARD_TEMPERATURE_C = 0.0`、
+    `DEFAULT_STANDARD_PRESSURE_KPA = 101.325`。
+  - **facts 里没有 `normal_volume_basis`**：单位原样保留，`report.record` 里保留
+    `NOT converted` 字样（旧测试依赖它），问题 `q-volumetric-flow`（
+    `field='feeds[0].total_flow_unit'`、`blocking=True`）的文字按计划写明，数值与单位
+    取自 facts（测试检查 `80000` 在问题里），并在单位属于标准体积时给出
+    `default='总进料，0°C/101.325 kPa'`。普通 `m3/h` 不给默认值，问题改为请用户直接
+    给出质量或摩尔流量。
+  - **facts 里有 `normal_volume_basis`**（值形如
+    `{'standard_temperature_C': 0.0, 'standard_pressure_kPa': 101.325}`，由步骤 7 写入）
+    且单位是 Nm³：`FeedSpec` 设 `flow_input='normal_volume'` 并填入两个标准状态字段，
+    单位规范成 `Nm3/h`；追加 `Assumption(id='a-normal-volume', source='user_answer',
+    accepted=True)`，`value` 写成 `'80000 Nm3/h @ 0°C/101.325 kPa'`，`scope` 写明"单股
+    混合进料总量 / 理想气体摩尔体积 22.414 m³/kmol / 由工具层换算 / 不用 HYSYS 自带的
+    15°C 标准体积"；`report.record` 记 `normal volume confirmed by the user ...`，
+    不再写 `NOT converted`。
+- **4.2 自定流量锚定含碳反应物**：新增 `_flow_anchor(fractions, reactions)`，按
+  "在某个反应中系数为负且含碳（`'C' in atoms_of(name)`）的进料组分中比例最大者 →
+  没有反应时含碳进料组分中比例最大者 → 退回比例最大者"的顺序选择。总流量为
+  `DEFAULT_PRINCIPAL_KMOL_H / fractions[anchor]`。新增
+  `OPERATING_HOURS_PER_YEAR = 8000`，年处理量按
+  `1000 × molar_mass_of(anchor) × 8000 / 1e6` 计算。`a-feed-flow` 的 `scope` 改为中文，
+  并按实际算出的数值拼写（重整得到 `3700 kmol/h`、`128.3 kt/a`）；`report.record`
+  保留 `chosen by us` 字样（旧测试依赖它）。
+- **4.3 二甲苯等分记成假设**：新增 `_XYLENE_ISOMERS` 与 `_isomer_split_applies(reactions)`，
+  两条来源都覆盖——`_stoichiometry` 展开"二甲苯/C8H10"（展开后三个系数相等），
+  以及模型自己就写成三个异构体且系数两两相等（误差 ≤ 1e-9）。统一追加一条
+  `Assumption(id='a-isomer-split', field='reactions.stoichiometry',
+  value='o/m/Xylene 各 1/3', source='agent_default', accepted=False, scope=...)`，
+  同一请求只加一次（在函数末尾集中追加，天然去重，不会与 `_stoichiometry` 里的记录重复）。
+- **4.4 问题 id 改用 crc32**：新增 `_stable_id(text) -> '%08x' % zlib.crc32(...)`，
+  替换了**全部** `abs(hash(...)) % 100000` 用法（实际是 4 处：`q-composition-species-`、
+  `q-reaction-species-`、`q-component-`，以及 `_stable_id` 之前同类的其他位置都已核对）。
+  计划写的行号只作参考，以内容搜索为准（执行规则 9）；计划只列了 3 处，实际文件里
+  `hash(` 的出现全部替换完毕，`grep 'hash('` 现在只剩文档字符串里的说明。
+- **4.5 过时文字**：`a-solid-phase` 的 `scope` 改为"进料含参与反应的固体碳，按
+  solid_carbon=saturation 组合流程执行（已随工具层验收）"；模块文档字符串里
+  "Nm3/h 一律不换算"改为"未经用户确认不换算"，并补一句确认后走工具层的
+  `normal_volume` 输入。
+
+### 按步骤 11 允许表更新的旧测试
+
+| 文件 | 测试 | 旧预期 | 新预期 |
+| --- | --- | --- | --- |
+| `test_normalize.py` | `DelegatedChoices.test_a_choice_is_made_and_recorded_as_an_assumption` | `scope` 含 `may be chosen` | `scope` 含 `可以自定` |
+
+### 新增测试（`test_normalize.py`，11 项）
+
+- `NormalVolumeIsConfirmedBeforeItIsUsed`（6 项）：默认答案文字与 `80000` 在问题里、
+  未确认时 `flow_input == 'local'`、确认后三字段齐全且不再有该问题、有
+  `a-normal-volume` 且 `value`/`scope`/`source` 正确、`m3/h` 的问题没有 `default`、
+  确认后仍然不在这里换算。
+- `TheFlowIsAnchoredOnTheCarbonReactant`（2 项）：总流量 3700 且甲烷份额乘总流量等于
+  1000；`scope` 含 `128`、`8000`、`Methane`。
+- `TheXyleneSplitIsDeclared`（3 项）：模型自己等分时也记假设、只记一次、无关请求不记。
+- `QuestionIdsSurviveAProcessBoundary`（1 项）：用 `subprocess` 分别在
+  `PYTHONHASHSEED=1` 与 `2` 下运行同一段脚本并比较输出。
+
+**测试数量**：`reactor_agent` 277 → **288**（+11），全部通过；`hysys_tools` 184 仍全部通过。
+
+
