@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>反应器建模助手</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+         background: #f4f6f8; color: #1f2933; line-height: 1.6; }
+  header { background: #14375e; color: #fff; padding: 14px 22px; }
+  header h1 { margin: 0; font-size: 19px; font-weight: 600; }
+  header .sub { font-size: 12px; opacity: .8; margin-top: 3px; }
+  main { max-width: 1080px; margin: 0 auto; padding: 18px 22px 60px; }
+  section { background: #fff; border: 1px solid #dde3ea; border-radius: 8px;
+            padding: 16px 18px; margin-bottom: 16px; }
+  section h2 { margin: 0 0 12px; font-size: 15px; color: #14375e;
+               border-left: 4px solid #2f6fb5; padding-left: 8px; }
+  label { display: block; font-size: 13px; color: #52606d; margin: 8px 0 3px; }
+  input[type=text], input[type=password], select, textarea {
+      width: 100%; padding: 8px 10px; border: 1px solid #cbd2d9; border-radius: 5px;
+      font-size: 14px; font-family: inherit; background: #fff; }
+  textarea { min-height: 130px; resize: vertical; }
+  .grid { display: grid; grid-template-columns: 2fr 1.4fr 1.4fr; gap: 12px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  button { padding: 8px 16px; border-radius: 5px; border: 1px solid #2f6fb5;
+           background: #2f6fb5; color: #fff; font-size: 14px; cursor: pointer; }
+  button.ghost { background: #fff; color: #2f6fb5; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .status { display: inline-block; padding: 3px 10px; border-radius: 11px;
+            font-size: 12px; font-weight: 600; letter-spacing: .3px; }
+  .s-WAITING_INPUT, .s-PAUSED, .s-RUNNING { background: #fff3cd; color: #8a6100; }
+  .s-READY, .s-PASS { background: #d8f0dd; color: #1c6b34; }
+  .s-PARTIAL { background: #ffe6cc; color: #8a4b00; }
+  .s-FAILED, .s-UNSUPPORTED { background: #fbdcdc; color: #96201f; }
+  .rules { font-size: 12px; color: #616e7c; margin-top: 6px; }
+  .q { border: 1px solid #e1e6eb; border-left: 3px solid #d9a300; border-radius: 5px;
+       padding: 10px 12px; margin-bottom: 10px; background: #fffdf5; }
+  .q .why { font-size: 12px; color: #616e7c; margin: 4px 0 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #e1e6eb; padding: 6px 8px; text-align: left; }
+  th { background: #f0f4f8; }
+  pre { white-space: pre-wrap; word-break: break-word; background: #f7f9fb;
+        border: 1px solid #e1e6eb; border-radius: 6px; padding: 12px;
+        font-size: 12.5px; font-family: Consolas, "Courier New", monospace;
+        max-height: 520px; overflow: auto; }
+  .hint { font-size: 12.5px; color: #616e7c; }
+  .warn { background: #fff8e6; border: 1px solid #f0d79a; border-radius: 5px;
+          padding: 8px 10px; font-size: 13px; margin-top: 8px; }
+  .err { background: #fdecec; border: 1px solid #f0b4b4; color: #96201f;
+         border-radius: 5px; padding: 8px 10px; font-size: 13px; margin-top: 8px; }
+  .files a { display: inline-block; margin-right: 12px; font-size: 13px; }
+  .kpis { display: flex; gap: 14px; flex-wrap: wrap; margin: 6px 0 10px; }
+  .kpi { background: #eef5fc; border: 1px solid #cfe1f5; border-radius: 6px;
+         padding: 8px 14px; }
+  .kpi .v { font-size: 20px; font-weight: 700; color: #14375e; }
+  .kpi .k { font-size: 12px; color: #52606d; }
+  .muted { color: #7b8794; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AI 驱动的化工反应器建模</h1>
+  <div class="sub">本机界面，只监听 127.0.0.1。凭据只在本进程内存里，刷新或重启即失效。</div>
+</header>
+
+<main>
+  <section>
+    <h2>1. 模型连接</h2>
+    <div class="grid">
+      <div>
+        <label for="base">接口地址</label>
+        <input type="text" id="base" placeholder="https://tokenrhythm.studio/v1">
+      </div>
+      <div>
+        <label for="model">模型名</label>
+        <input type="text" id="model" placeholder="qwen3.7-flash">
+      </div>
+      <div>
+        <label for="key">Key（不回传、不落盘）</label>
+        <input type="password" id="key" placeholder="在此填写，或使用 .env" autocomplete="off">
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="save-settings">保存设置</button>
+      <span id="key-state" class="hint"></span>
+    </div>
+    <div class="rules">
+      优先级：页面填写 &gt; 环境变量（TR_BASE / TR_MODEL / TR_KEY）&gt; 项目根目录的
+      <code>.env</code>（只读，已在 .gitignore 里）。Key 只保存在服务进程内存中，
+      不写入检查点、state.json、explanation.txt、日志或浏览器 localStorage。
+    </div>
+  </section>
+
+  <section>
+    <h2>2. 需求输入</h2>
+    <label for="scenario">场景</label>
+    <select id="scenario">
+      <option value="">自定义（下面自行填写）</option>
+    </select>
+    <label for="text">需求原文（可编辑）</label>
+    <textarea id="text" placeholder="例如：我要模拟水煤浆的气化过程……"></textarea>
+    <div class="row" style="margin-top:10px">
+      <label style="margin:0"><input type="checkbox" id="execute"> 真实执行 HYSYS</label>
+      <span class="hint">勾选后必须同时确认下面这一项。</span>
+    </div>
+    <div id="execute-guard" style="display:none" class="warn">
+      <label style="margin:0">
+        <input type="checkbox" id="workstation-ready">
+        工作站已打开 HYSYS，且没有其他模拟在运行
+      </label>
+      <div class="hint" style="margin-top:4px">
+        不勾选时不会启动任何模拟。同一时间只允许一个真实执行。
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="start">开始运行</button>
+      <button id="preview" class="ghost">预览理解（不创建任何文件）</button>
+      <span id="run-state" class="hint"></span>
+    </div>
+  </section>
+
+  <section id="questions-section" style="display:none">
+    <h2>3. 需要确认</h2>
+    <div id="questions"></div>
+    <div class="row">
+      <button id="submit-answers">提交回答</button>
+      <button id="accept-defaults" class="ghost">全部采用默认答案</button>
+      <span class="hint">回车采用默认答案；不确定时可以直接采用默认。</span>
+    </div>
+  </section>
+
+  <section id="result-section" style="display:none">
+    <h2>4. 结果</h2>
+    <div class="row" style="margin-bottom:8px">
+      <span class="hint">状态</span><span id="status-pill" class="status"></span>
+      <span id="status-extra" class="hint"></span>
+    </div>
+    <div id="kpis" class="kpis"></div>
+    <div id="decision" class="hint"></div>
+    <div id="assumptions"></div>
+    <div id="comparison"></div>
+    <div id="files" class="files"></div>
+    <div id="problems"></div>
+    <h3 style="font-size:14px;margin:14px 0 6px">报告全文</h3>
+    <pre id="report"></pre>
+  </section>
+
+  <div id="banner"></div>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var state = { runId: null, questions: [] };
+
+  function $(id) { return document.getElementById(id); }
+
+  function banner(message, kind) {
+    var box = $("banner");
+    if (!message) { box.innerHTML = ""; return; }
+    box.innerHTML = '<div class="' + (kind === "error" ? "err" : "warn") + '"></div>';
+    box.firstChild.textContent = message;
+  }
+
+  function api(path, options) {
+    return fetch(path, options).then(function (response) {
+      return response.json().then(function (payload) {
+        if (!response.ok) {
+          throw new Error(payload && payload.error ? payload.error : ("HTTP " + response.status));
+        }
+        return payload;
+      });
+    });
+  }
+
+  function setStatus(status, extra) {
+    var pill = $("status-pill");
+    pill.textContent = status || "—";
+    pill.className = "status s-" + (status || "NONE");
+    $("status-extra").textContent = extra || "";
+  }
+
+  // ------------------------------------------------------------ settings
+  function loadSettings() {
+    api("/api/settings").then(function (payload) {
+      $("base").value = payload.base || "";
+      $("model").value = payload.model || "";
+      $("key-state").textContent = payload.key_set
+        ? "Key：已设置（来自环境变量或 .env；在页面上填入可覆盖）"
+        : "Key：未设置（必须填写，或把 TR_KEY 写进 .env）";
+    }).catch(function (error) { banner(error.message, "error"); });
+  }
+
+  $("save-settings").addEventListener("click", function () {
+    api("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base: $("base").value, model: $("model").value,
+                             key: $("key").value })
+    }).then(function (payload) {
+      $("key").value = "";
+      $("key-state").textContent = payload.key_set ? "Key：已设置" : "Key：未设置";
+      banner("设置已保存在本进程内存中。", "info");
+    }).catch(function (error) { banner(error.message, "error"); });
+  });
+
+  // ----------------------------------------------------------- scenarios
+  api("/api/scenarios").then(function (payload) {
+    var select = $("scenario");
+    (payload.scenarios || []).forEach(function (item) {
+      var option = document.createElement("option");
+      option.value = item.name;
+      option.textContent = item.name + "（" + item.label + "）";
+      option.dataset.text = item.text;
+      select.appendChild(option);
+    });
+    select.addEventListener("change", function () {
+      var chosen = select.options[select.selectedIndex];
+      $("text").value = chosen && chosen.dataset.text ? chosen.dataset.text : "";
+    });
+  }).catch(function (error) { banner(error.message, "error"); });
+
+  $("execute").addEventListener("change", function () {
+    $("execute-guard").style.display = $("execute").checked ? "block" : "none";
+  });
+
+  // --------------------------------------------------------------- start
+  function payload(extra) {
+    var body = {
+      scenario: $("scenario").value,
+      text: $("text").value,
+      execute: $("execute").checked && $("workstation-ready").checked
+    };
+    for (var key in extra || {}) { body[key] = extra[key]; }
+    return body;
+  }
+
+  function showRun(data) {
+    state.runId = data.run_id || state.runId;
+    var questions = data.questions || [];
+    state.questions = questions;
+    $("run-state").textContent = "运行目录：" + (data.folder || "") +
+      "　运行号：" + (state.runId || "");
+    if (questions.length) {
+      renderQuestions(questions);
+      $("questions-section").style.display = "block";
+      setStatus(data.status || "WAITING_INPUT", "尚未创建任何案例，也没有运行模拟。");
+    } else {
+      $("questions-section").style.display = "none";
+    }
+    renderResult(data);
+    if ((data.problems || []).length) {
+      var list = $("problems");
+      list.innerHTML = '<div class="warn"><b>运行记录</b><br></div>';
+      data.problems.forEach(function (item) {
+        list.firstChild.appendChild(document.createElement("br"));
+        list.firstChild.appendChild(document.createTextNode("· " + item));
+      });
+    }
+  }
+
+  function renderQuestions(questions) {
+    var box = $("questions");
+    box.innerHTML = "";
+    questions.forEach(function (question) {
+      var card = document.createElement("div");
+      card.className = "q";
+      var title = document.createElement("div");
+      title.textContent = question.question || "";
+      card.appendChild(title);
+      if (question.reason) {
+        var why = document.createElement("div");
+        why.className = "why";
+        why.textContent = "原因：" + question.reason;
+        card.appendChild(why);
+      }
+      var input = document.createElement("input");
+      input.type = "text";
+      input.id = "answer-" + question.id;
+      input.dataset.qid = question.id;
+      input.placeholder = question.default ? ("回车采用默认：" + question.default) : "请填写";
+      input.value = question.default || "";
+      card.appendChild(input);
+      box.appendChild(card);
+    });
+  }
+
+  function collectAnswers(useDefaults) {
+    var answers = {};
+    state.questions.forEach(function (question) {
+      var input = document.getElementById("answer-" + question.id);
+      var value = input ? input.value.trim() : "";
+      if (!value && useDefaults && question.default) { value = question.default; }
+      if (value) { answers[question.id] = value; }
+    });
+    return answers;
+  }
+
+  $("start").addEventListener("click", function () {
+    if ($("execute").checked && !$("workstation-ready").checked) {
+      banner("要真实执行 HYSYS，请先确认工作站已打开 HYSYS 且没有其他模拟在运行。", "error");
+      return;
+    }
+    banner("");
+    $("start").disabled = true;
+    setStatus("RUNNING", "正在理解需求……");
+    api("/api/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload())
+    }).then(function (data) {
+      $("result-section").style.display = "block";
+      showRun(data);
+    }).catch(function (error) {
+      banner(error.message, "error");
+      setStatus("FAILED", "");
+    }).then(function () { $("start").disabled = false; });
+  });
+
+  $("preview").addEventListener("click", function () {
+    banner("");
+    $("preview").disabled = true;
+    api("/api/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scenario: $("scenario").value, text: $("text").value })
+    }).then(function (data) {
+      $("result-section").style.display = "block";
+      $("questions-section").style.display = "none";
+      setStatus(data.status, "预览：未创建任何文件，也没有运行模拟。");
+      renderResult({ status: data.status, report: data.report,
+                     problems: data.problems || [], files: [] });
+      if ((data.blocking || []).length) {
+        var box = $("decision");
+        box.innerHTML = "";
+        data.blocking.forEach(function (question) {
+          var line = document.createElement("div");
+          line.textContent = "待确认：" + question.question +
+            (question.default ? "（默认：" + question.default + "）" : "");
+          box.appendChild(line);
+        });
+      }
+    }).catch(function (error) { banner(error.message, "error"); })
+      .then(function () { $("preview").disabled = false; });
+  });
+
+  function answer(useDefaults) {
+    var answers = collectAnswers(useDefaults);
+    if (!state.runId || !Object.keys(answers).length) {
+      banner("请至少回答一个问题。", "error");
+      return;
+    }
+    banner("");
+    api("/api/answer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ run_id: state.runId, answers: answers })
+    }).then(function (data) {
+      showRun(data);
+      banner("");
+    }).catch(function (error) { banner(error.message, "error"); });
+  }
+
+  $("submit-answers").addEventListener("click", function () { answer(false); });
+  $("accept-defaults").addEventListener("click", function () { answer(true); });
+
+  // --------------------------------------------------------------- render
+  function renderResult(data) {
+    $("result-section").style.display = "block";
+    if (data.status) { setStatus(data.status, ""); }
+    $("report").textContent = data.report || "（尚无报告）";
+
+    var decision = data.decision || {};
+    var text = [];
+    if (decision.executed || decision.preferred) {
+      text.push("选型：" + (decision.executed || decision.preferred) +
+                "（能力状态 " + (decision.capability || "?") +
+                "，规则 " + (decision.rule || "?") + "）");
+    }
+    if (decision.substituted) {
+      text.push("注意：理论选型为 " + decision.preferred + "，实际执行为 " +
+                decision.executed + "。原因：" +
+                (decision.fallback_reason || "见能力表"));
+    }
+    $("decision").textContent = text.join(" ");
+
+    var groups = { agent_default: "本系统选定", user_answer: "用户确认",
+                   user_text: "来自题目原文", derived: "推导所得" };
+    var box = $("assumptions");
+    box.innerHTML = "";
+    var bySource = {};
+    (data.assumptions || []).forEach(function (item) {
+      var key = item.source || "other";
+      (bySource[key] = bySource[key] || []).push(item);
+    });
+    Object.keys(bySource).forEach(function (source) {
+      var heading = document.createElement("div");
+      heading.className = "hint";
+      heading.style.marginTop = "8px";
+      heading.textContent = (groups[source] || source) + "：";
+      box.appendChild(heading);
+      bySource[source].forEach(function (item) {
+        var line = document.createElement("div");
+        line.className = "hint";
+        var value = Array.isArray(item.value) ? item.value.join("、") : item.value;
+        line.textContent = "· " + item.field + " = " + value +
+          (item.scope ? "（" + item.scope + "）" : "");
+        box.appendChild(line);
+      });
+    });
+
+    renderKpis(data);
+    renderComparison(data);
+    renderFiles(data);
+  }
+
+  function renderKpis(data) {
+    var box = $("kpis");
+    box.innerHTML = "";
+    var report = data.report || "";
+    function kpi(label, value) {
+      var cell = document.createElement("div");
+      cell.className = "kpi";
+      var v = document.createElement("div");
+      v.className = "v";
+      v.textContent = value;
+      var k = document.createElement("div");
+      k.className = "k";
+      k.textContent = label;
+      cell.appendChild(v); cell.appendChild(k);
+      box.appendChild(cell);
+    }
+    var co = report.match(/CO 收率 ([\d.]+)%/);
+    var carbon = report.match(/碳转化率 ([\d.]+)%/);
+    var ceiling = report.match(/氧平衡上限 ([\d.]+)%/);
+    var duty = report.match(/热负荷 ([\d.]+) kW/);
+    if (co) { kpi("CO 收率", co[1] + "%"); }
+    if (carbon) { kpi("碳转化率", carbon[1] + "%"); }
+    if (ceiling) { kpi("氧平衡上限", ceiling[1] + "%"); }
+    if (duty) { kpi("热负荷", duty[1] + " kW"); }
+  }
+
+  function renderComparison(data) {
+    var box = $("comparison");
+    box.innerHTML = "";
+    var report = data.report || "";
+    var start = report.indexOf("工况对比");
+    if (start < 0) { return; }
+    var end = report.indexOf("\n\n", start);
+    var block = report.slice(start, end < 0 ? report.length : end);
+    var lines = block.split("\n").filter(function (line) { return line.trim(); });
+    if (lines.length < 3) { return; }
+    var table = document.createElement("table");
+    lines.forEach(function (line, index) {
+      if (/^-+/.test(line.replace(/\s/g, ""))) { return; }
+      var row = document.createElement("tr");
+      line.trim().split(/\s{2,}/).forEach(function (cell) {
+        var node = document.createElement(index === 0 ? "th" : "td");
+        node.textContent = cell.trim();
+        row.appendChild(node);
+      });
+      table.appendChild(row);
+    });
+    box.appendChild(table);
+    var trend = report.indexOf("温度趋势");
+    if (trend >= 0) {
+      var para = document.createElement("div");
+      para.className = "hint";
+      para.style.marginTop = "8px";
+      para.textContent = report.slice(trend, report.indexOf("\n\n", trend) < 0
+        ? report.length : report.indexOf("\n\n", trend)).replace(/\n/g, " ");
+      box.appendChild(para);
+    }
+  }
+
+  function renderFiles(data) {
+    var box = $("files");
+    box.innerHTML = "";
+    (data.files || []).forEach(function (name) {
+      var link = document.createElement("a");
+      link.href = "/api/run/" + encodeURIComponent(state.runId) +
+        "/files/" + encodeURIComponent(name);
+      link.textContent = "下载 " + name;
+      box.appendChild(link);
+    });
+  }
+
+  // Refresh re-reads the stored state; it never re-runs the model.
+  loadSettings();
+})();
+</script>
+</body>
+</html>

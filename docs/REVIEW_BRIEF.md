@@ -213,11 +213,11 @@ HYSYS V15 库里的 Carbon 带的是气态原子碳的 Gibbs 数据，普通 Gib
 conda create -n hysys-agent python=3.12 -y && conda activate hysys-agent
 python -m pip install -r requirements.txt
 
-# 全部离线测试（13 个套件）
+# 全部离线测试（14 个套件）
 scripts\run-all-tests.cmd
 ```
 
-预期：**13 个套件全部 exit 0**。各套件的测试数量见脚本输出，本轮修改后的总数记在 `docs/AGENT_FIX_NOTES.md`。
+预期：**14 个套件全部 exit 0**。各套件的测试数量见脚本输出，本轮修改后的总数记在 `docs/AGENT_FIX_NOTES.md`。
 
 单项跑法：
 
@@ -293,8 +293,11 @@ python -m reactor_agent --scenario gasification --accept-defaults
    假设成功。相关测试：`test_adapters.py::SuccessAndFailure`、`test_adapters.py::SuccessNeedsEvidence`。
 
 8. **凭据是否真的不会落盘。**
-   `TR_KEY` 只从环境变量读。检查有没有任何路径会把它写进日志、检查点或产物。
-   相关测试：`test_llm.py::CredentialHandling`、`test_adapters.py` 的 summary 测试。
+   `TR_KEY` 只从环境变量读（或页面运行时填写 / 项目根目录的 `.env`）。
+   检查有没有任何路径会把它写进日志、检查点或产物。
+   相关测试：`test_llm.py::CredentialHandling`、`test_adapters.py` 的 summary 测试，
+   以及网页界面的 `test_web.py::TheKeyIsContained`（设置一个假 key 后，任何响应体、
+   运行目录里的任何文件、任何检查点里都找不到那个字符串）。
 
 ---
 
@@ -310,7 +313,7 @@ python -m reactor_agent --scenario gasification --accept-defaults
 | **气化只验收了"碳 + 水"进料** | 其他组成的固体进料不在验收范围内 |
 | **报告层的 Q/K 测试夹具是人工构造的** | 形状与工具层一致，等工作站真实结果回来后替换 |
 | **抽取依赖外部模型服务** | 需要 `TR_KEY`；模型不可用时明确报错并停止，不猜 |
-| **没有图形界面** | 只有 CLI（`python -m reactor_agent`） |
+| **有本机网页界面**（`python -m reactor_agent.web`，或双击 `Run-Agent-UI.cmd`） | 只监听 `127.0.0.1:8765`，可用 `--port` 改；key 在页面上填写，只存在进程内存里。CLI 仍是主要验收证据 |
 
 ---
 

@@ -694,6 +694,130 @@ notes   : 3 entries（都是历史验收目录里被排除的 .hsc）
 
 **测试数量**：`reactor_agent` 355、`hysys_tools` 184、打包器 17，全部通过。
 
+---
+
+## 步骤 13：中文网页界面与运行时填写凭据
+
+### 13.1 技术约束
+
+- 只用标准库 `http.server.ThreadingHTTPServer`；页面是一个内联 CSS/JS 的 HTML 文件
+  （`reactor_agent/web_static/index.html`）；**没有引入任何新依赖**。
+- 只监听 `127.0.0.1`，默认端口 8765，`--port` 可改；启动命令 `python -m reactor_agent.web`，
+  另有双击入口 `Run-Agent-UI.cmd`（可带端口参数，**按要求存成 CRLF**，实测 CRLF=45、bare-LF=0）。
+- 新文件：`reactor_agent/web.py`、`reactor_agent/web_static/index.html`、
+  `reactor_agent/test_web.py`。
+
+### 13.2 凭据规则
+
+- 页面"模型连接"区三个输入框：地址、模型名、Key；Key 用 `type="password"`。
+- 启动时读 `TR_BASE` / `TR_MODEL` / `TR_KEY`；地址与模型名预填，Key **不回传**，
+  只显示"已设置 / 未设置"。
+- 项目根目录的 `.env` 只读解析（`KEY=VALUE`，忽略空行与 `#` 注释，去掉两侧引号）；
+  优先级 **页面填写 > 环境变量 > `.env`**。
+- Key 只保存在 `WebApp.settings` 的内存里；`GET /api/settings` 只返回
+  `{base, model, key_set}`，**任何接口的响应都不含它**，也不写入检查点、`state.json`、
+  `explanation.txt`、日志或浏览器 `localStorage`。
+- 代码与测试里没有任何真实 key；所有测试用注入的假 transport。
+
+### 13.3 页面功能
+
+场景下拉（选中即把题目原文填进文本框，可再编辑）＋自定义；需求文本框；默认 dry run，
+"真实执行 HYSYS"必须同时勾选"工作站已打开 HYSYS 且没有其他模拟在运行"；追问区逐题显示
+问题、原因，默认答案预填在输入框里，可直接提交或"全部采用默认答案"；结果区显示选型结论
+与理由（含替换原因）、假设按"本系统选定 / 用户确认 / 推导所得"分组、工况对比表与温度趋势
+解读、气化的 CO 收率/碳转化率/氧平衡上限三个醒目数字、校验与工具层提示、报告全文、
+以及 `spec-*.json`/`explanation.txt`/`state.json` 等下载链接；状态栏显示
+`WAITING_INPUT`/`READY`/`RUNNING`/`PASS`/`PARTIAL`/`FAILED`/`UNSUPPORTED`。
+
+### 13.4 服务端接口
+
+| 接口 | 作用 |
+| --- | --- |
+| `GET /` | 页面本身 |
+| `GET` / `POST /api/settings` | 读取/设置模型连接；响应只有 `{base, model, key_set}` |
+| `GET /api/scenarios` | 内置场景（复用 CLI 的 `SCENARIOS`，两者不会走偏） |
+| `POST /api/preview` | 只读预览"系统理解成了什么"，**写入临时目录**，不创建运行目录与案例 |
+| `POST /api/run` | 新建运行目录与 thread_id，用与 CLI 相同的 `build_graph` 开始 |
+| `GET /api/run/<run_id>` | 只读检查点；**不重新计算、不再调用模型** |
+| `POST /api/answer` | 以 `Command(resume=answers)` 继续 |
+| `GET /api/run/<run_id>/files/<name>` | 白名单下载；拒绝 `..`、绝对路径与白名单外文件名 |
+
+- 运行目录仍都在 `agent-runs/` 下；`web-runs.json` 只记 run_id/thread_id/目录名/标签/状态，
+  **不含任何凭据**，用于进程重启后按 id 找回暂停的运行。
+- 同一时间只允许一个真实执行（`threading.Lock`），另一个执行请求返回 409"工作站忙"；
+  dry run 不受限制。
+- 模型调用失败时，响应里给出明确的错误文本与已经算出的内容，不猜结果。
+
+### 13.5 测试（`reactor_agent/test_web.py`，18 项，不联网、不连 HYSYS）
+
+- `SettingsEndpoint`：key 只报告"已设置"且响应体里不含它；页面带有三个输入框且 Key 是
+  `type="password"`。
+- `TheKeyIsContained`：设置一个假 key 后，`POST /api/run` 的响应、`POST /api/answer` 的响应、
+  `GET /api/run/<id>` 的响应、运行目录里**每一个文件**、以及每一个下载响应里都搜不到该字符串。
+- `GasificationRoundTrip`：用假客户端跑气化 → 第一次返回两个问题且**都带默认答案** →
+  用默认答案作答 → `status == 'READY'`、无问题、报告含 `dry run`、有 `spec-*` 产物；
+  连续两次 `GET /api/run/<id>` 后**假 transport 调用次数不增加**；未知 run_id 返回 404；
+  空 answers 返回 400。
+- `DownloadsAreWhitelisted`：`../state.json`、`..%5C…`、`%2e%2e%2f…`、`C:Windows\win.ini`、
+  `.env`、`checkpoints.sqlite`、白名单外文件名一律 404；白名单函数本身也逐项断言。
+- `PreviewHasNoSideEffects`：预览在临时目录里完成，响应后 `app.runs` 为空、`agent-runs/`
+  下**没有任何文件**。
+- `TheServerIsLoopbackOnly`：默认绑定是 `127.0.0.1`。
+- `EnvFileParsing`：空行与注释被忽略、引号被去掉、`export` 前缀可用；优先级
+  页面 > 环境变量 > `.env`；公共视图只有 `base/model/key_set`。
+- `RealExecutionNeedsConfirmation`：没有 key 时先拒绝（400，不跑任何东西）；空需求 400。
+
+### 实现过程中修掉的一个真实缺陷
+
+`graph.open_checkpointer` 返回的是**上下文管理器**（`SqliteSaver.from_conn_string` 是
+`@contextmanager`），不是 saver 对象本身。第一版 web.py 把它直接传给 `build_graph`，
+于是每次运行都在 `POST /api/run` 里失败、只回一个 `FAILED` 状态，问题文本藏在
+`problems` 里——测试随即报 `'FAILED' != 'WAITING_INPUT'`。改为
+`with self._open(run) as saver:` 后才正常。顺带把模型客户端抽成 `WebApp.client()`
+这一个接缝，测试注入假客户端即可，不需要打 socket。
+
+### 13.6 文档
+
+- `README.md` 新增"网页界面（本机，可选）"一节：启动方式、凭据填写方式、`.env` 的用法与
+  注意事项（不要放进 `reactor_agent/`）、刷新不重算、运行目录与 CLI 相同；目录结构补上
+  `web.py`/`web_static/index.html`，测试数改为 373。
+- `docs/REVIEW_BRIEF.md` 第 5 节"没有图形界面"改为"有本机网页界面（`python -m
+  reactor_agent.web`），只监听 127.0.0.1"；第 4 节第 8 条"凭据是否真的不会落盘"补上
+  `test_web.py::TheKeyIsContained`；第 3 节的套件数由 13 改为 14。
+- `scripts/run-all-tests.cmd` 加入 `reactor_agent.test_web`，编号改为 `[n/14]`
+  （**CRLF**，实测 CRLF=89、bare-LF=0）。
+- `PROJECT_PLAN.md` 的 P1-F 五项全部勾选，并写明实现方式与验收口径。
+
+### 13.7 关于 Streamlit（用户提出，未采用）
+
+用户在执行本步时提出"前端可以用 Streamlit"。核对计划：步骤 13.1 明确要求"只用标准库
+`http.server.ThreadingHTTPServer`……不引入新依赖（执行规则 7）"，执行规则 7 是"新代码不得
+依赖新的第三方库，只用标准库 + pydantic + langgraph"。按执行规则 10（偏离会改变对外行为时
+先问用户），我把两条路的差别列清后询问，**用户选择保留标准库实现**，因此本步没有引入
+Streamlit，也没有改动 `requirements.txt`。
+
+### 13.8 打包需要重做
+
+步骤 12 打出的 `hysys-agent-submission-20261003-222823.zip`（152 个条目）是在步骤 13
+之前生成的，**不含** `web.py`/`web_static/index.html`/`test_web.py`，且遗漏了
+`RELEASE_MANIFEST.json` 与 `NATIVE_FLOW_UPDATE.md` 的删除。最终包必须在本步之后重打。
+
+**测试数量**：`reactor_agent` 355 → **373**（+18），全部通过；`hysys_tools` 184 仍全部通过；
+`run-all-tests.cmd` 14 个套件 ALL SUITES PASSED。
+
+---
+
+## 最终测试数量（全部步骤完成后）
+
+| 套件 | 数量 |
+| --- | --- |
+| `hysys_tools.selfcheck` | 122 passed, 0 failed |
+| `hysys_tools` unittest（含 test_reliability） | 184 |
+| `reactor_agent` unittest（llm 23、extraction 36、normalize 62、selection 43、compiler 33、adapters 45、pipeline 23、graph 53、report 19、cli 18、web 18） | 373 |
+| `scripts/test_build_submission.py` | 17 |
+| **合计** | **696** |
+
+
 
 
 

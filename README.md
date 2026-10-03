@@ -45,8 +45,8 @@ status ALL_SCENARIOS_PASS
 | 甲烷蒸汽重整 | `READY` —— Equilibrium（verified），两个工况，案例名 `smr-710C`/`smr-600C`，自定流量甲烷 1000 kmol/h（总 3700 kmol/h，约 128 kt/a） |
 | 水煤浆气化 | 先 `WAITING_INPUT`（两题都带默认答案）；回车采用默认后 `READY` —— Gibbs（verified），spec 含 `flow_input: normal_volume` 与 `solid_carbon: saturation` |
 
-**离线测试全部通过**：工具层 122 项自检 + 184 项回归，Agent 层 355 项，打包器 17 项；
-`scripts\run-all-tests.cmd` 13 个套件全绿。各套件数量见 `docs/AGENT_FIX_NOTES.md`。
+**离线测试全部通过**：工具层 122 项自检 + 184 项回归，Agent 层 373 项，打包器 17 项；
+`scripts\run-all-tests.cmd` **14 个套件**全绿。各套件数量见 `docs/AGENT_FIX_NOTES.md`。
 
 ## 目录结构
 
@@ -86,8 +86,10 @@ status ALL_SCENARIOS_PASS
 │   │   ├── explain.py        #   调用 report.py 渲染中文解释
 │   │   └── answers.py        #   把用户作答并回事实（宽松解析）
 │   ├── adapters/             # 子进程执行工具层 + 执行台账
+│   ├── web.py                # 本机网页界面（标准库 http.server，只监听 127.0.0.1）
+│   ├── web_static/index.html #   页面：模型连接、需求、追问、结果、下载
 │   ├── __main__.py           # CLI：python -m reactor_agent（默认走状态图）
-│   └── test_*.py             # 355 项离线测试
+│   └── test_*.py             # 373 项离线测试
 ├── docs/
 │   ├── TOOL_REFERENCE.md         # 工具层接口参考（agent 可直接读）
 │   ├── REMOTE_VALIDATION.md      # 远程验收步骤与判读
@@ -199,6 +201,37 @@ python -m hysys_tools --spec specs\case.json --folder runs\unique-run-id
 
 > 每次必须使用**全新的输出目录**。同一 HYSYS 实例只允许串行调用。
 > 工具层只会修改和关闭**本次自己创建的**案例，不会通过活动文档定位或改动用户原有的案例。
+
+## 网页界面（本机，可选）
+
+不想敲命令时用它：填模型连接 → 贴需求 → 回答追问 → 看结果与下载文件。
+
+```bash
+python -m reactor_agent.web              # 默认 http://127.0.0.1:8765
+python -m reactor_agent.web --port 8899  # 换端口
+```
+
+也可以双击 `Run-Agent-UI.cmd`（可带端口参数），它会设好入口并打开浏览器。
+
+- **只监听 `127.0.0.1`**，别的机器访问不到；只用标准库 `http.server`，没有新依赖。
+- **凭据在页面上运行时填写**，只保存在服务进程内存里，进程退出即失效；页面上的 Key
+  输入框是 `type="password"`。`GET /api/settings` 只回答"是否已设置"，任何接口的响应
+  都不含它，也不写进检查点、`state.json`、`explanation.txt` 或日志。
+- 不想每次输入，可以在**项目根目录**放一个 `.env`（只读，已在 `.gitignore` 里，不进提交包）：
+
+  ```
+  TR_BASE=https://tokenrhythm.studio/v1
+  TR_MODEL=qwen3.7-flash
+  TR_KEY=<your key>
+  ```
+
+  优先级：页面填写 > 环境变量 > `.env`。**不要把 `.env` 放进 `reactor_agent/`**，
+  那个目录会被整目录打包。
+- 默认 dry run；勾选"真实执行 HYSYS"时还必须勾选"工作站已打开 HYSYS 且没有其他模拟
+  在运行"，且同一时间只允许一个真实执行。
+- 暂停时逐题显示问题与原因，默认答案预填在输入框里，回车即可采用。
+- 刷新页面只读检查点，**不会重新调用模型**，也不会重复跑案例。
+- 运行目录与 CLI 相同（`agent-runs/`），产物同名，可在页面上直接下载。
 
 ## 能力范围与边界
 
