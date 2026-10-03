@@ -100,6 +100,54 @@ class FeedSpec(Strict):
     pressure_unit: str = 'kPa'
     source_text: str = ''
 
+    # The tool layer's accepted normal-volume path. `flow_input='normal_volume'`
+    # means the total is a standard gas volume and the two conditions below say on
+    # what basis it is standard, so nothing has to be guessed or left ambiguous.
+    # These three keys are sent to the tool layer verbatim, which is why they carry
+    # the same names.
+    flow_input: Literal['local', 'normal_volume'] = 'local'
+    standard_temperature_C: float | None = None
+    standard_pressure_kPa: float | None = None
+
+    @model_validator(mode='after')
+    def _normal_volume_is_complete(self) -> FeedSpec:
+        """A normal-volume total must carry everything the conversion needs.
+
+        The whole point of this path is that the standard conditions are stated
+        rather than assumed, so a half-specified one is worse than none: it would
+        reach the tool layer and be refused there, after the intake step had already
+        stopped being able to ask. Rejecting it here keeps that conversation open.
+        """
+        if self.flow_input != 'normal_volume':
+            return self
+        from hysys_tools.core import NORMAL_VOLUME_UNITS
+
+        if self.total_flow is None:
+            raise ValueError('flow_input "normal_volume" needs total_flow')
+        unit = self.total_flow_unit.strip().casefold()
+        if unit not in NORMAL_VOLUME_UNITS:
+            raise ValueError(
+                'flow_input "normal_volume" needs a normal volume unit for '
+                'total_flow_unit; got %r. Allowed: %s'
+                % (self.total_flow_unit, sorted(NORMAL_VOLUME_UNITS)))
+        if self.standard_temperature_C is None or self.standard_pressure_kPa is None:
+            raise ValueError(
+                'flow_input "normal_volume" needs both standard_temperature_C and '
+                'standard_pressure_kPa; got %r and %r'
+                % (self.standard_temperature_C, self.standard_pressure_kPa))
+        if self.standard_pressure_kPa <= 0:
+            raise ValueError('standard_pressure_kPa must be positive; got %r'
+                             % self.standard_pressure_kPa)
+        if self.standard_temperature_C <= -273.15:
+            raise ValueError('standard_temperature_C is at or below absolute zero; '
+                             'got %r' % self.standard_temperature_C)
+        if self.basis not in ('molar_fraction', 'mass_fraction'):
+            raise ValueError(
+                'flow_input "normal_volume" needs a fraction composition basis '
+                '(molar_fraction or mass_fraction); got %r. A normal volume is a '
+                'total, so per-component flows cannot express it.' % self.basis)
+        return self
+
     @model_validator(mode='after')
     def _unit_matches_basis(self) -> FeedSpec:
         """Reject a unit that cannot possibly express the chosen basis.
@@ -230,6 +278,12 @@ class Question(Strict):
     blocking: bool = True
     reason: str = ''
     answer: str | None = None
+    # A suggested answer, taken only when the user confirms it (pressing enter at the
+    # prompt, or --accept-defaults). It must read as the answer itself, exactly as
+    # `nodes/answers.py` would receive it typed - 'total feed, 0 C/101.325 kPa', say -
+    # so "accept the default" needs no separate code path and produces no value that
+    # the user never saw. Nothing may copy this into a spec or into facts on its own.
+    default: str | None = None
 
     def is_open(self) -> bool:
         return self.answer is None or not str(self.answer).strip()

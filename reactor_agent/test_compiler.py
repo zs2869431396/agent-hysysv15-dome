@@ -28,6 +28,7 @@ from reactor_agent.schemas import (
     OperatingCase,
     OperatingCaseRequest,
     ProcessRequest,
+    Question,
     ReactionSpec,
 )
 from reactor_agent.selection import select_reactor
@@ -286,6 +287,54 @@ class AnsweringTheQuestionsUnblocksTheRun(unittest.TestCase):
 
 
 class ContractGuards(unittest.TestCase):
+
+    def test_normal_volume_rejects_a_unit_that_is_not_a_normal_volume(self):
+        """Nm3/h is a volume of gas; kg/h is not, and the contract says so.
+
+        The tool layer accepts Nm3/h only through its `normal_volume` path, where the
+        standard conditions are stated. Letting a mass unit through here would defer
+        the refusal to the tool layer, after intake has stopped being able to ask.
+        """
+        with self.assertRaises(pydantic.ValidationError):
+            FeedSpec(flow_input='normal_volume', total_flow=80000.0,
+                     total_flow_unit='kg/h', standard_temperature_C=0.0,
+                     standard_pressure_kPa=101.325)
+
+    def test_normal_volume_needs_both_standard_conditions(self):
+        """One condition stated and the other omitted is worse than neither.
+
+        The conversion is arithmetic on these two numbers, so a missing one would
+        either be invented or silently defaulted - and a default would be exactly the
+        silent basis change this path exists to prevent.
+        """
+        with self.assertRaises(pydantic.ValidationError):
+            FeedSpec(flow_input='normal_volume', total_flow=80000.0,
+                     total_flow_unit='Nm3/h', standard_temperature_C=0.0)
+
+    def test_a_complete_normal_volume_feed_is_accepted(self):
+        feed = FeedSpec(flow_input='normal_volume', total_flow=80000.0,
+                        total_flow_unit='Nm3/h', standard_temperature_C=0.0,
+                        standard_pressure_kPa=101.325, basis='mass_fraction',
+                        fractions={'Carbon': 0.62, 'Water': 0.38})
+        self.assertEqual(feed.flow_input, 'normal_volume')
+        self.assertEqual(feed.standard_pressure_kPa, 101.325)
+
+    def test_normal_volume_needs_a_fraction_basis(self):
+        """A normal volume is a total, so per-component flows cannot express it."""
+        with self.assertRaises(pydantic.ValidationError):
+            FeedSpec(flow_input='normal_volume', total_flow=80000.0,
+                     total_flow_unit='Nm3/h', standard_temperature_C=0.0,
+                     standard_pressure_kPa=101.325, basis='molar_flow',
+                     flows={'Carbon': 1.0})
+
+    def test_a_question_can_carry_a_suggested_answer(self):
+        """`default` is offered to the user, never applied on its own."""
+        question = Question(id='q1', field='flow_input', question='where does it go?',
+                            default='总进料，0°C/101.325 kPa')
+        self.assertEqual(question.model_dump()['default'],
+                         '总进料，0°C/101.325 kPa')
+        # And it stays an open question until somebody answers.
+        self.assertTrue(question.is_open())
 
     def test_basis_and_unit_must_agree(self):
         """A mass basis with the default molar unit is caught at the contract."""
