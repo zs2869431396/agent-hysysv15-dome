@@ -24,6 +24,16 @@
 
 ## 2. 当前状态
 
+> **2026-10-03 智能体层修复（本轮）**：`reactor_agent/` 已按 `docs/AGENT_FIX_PLAN.md`
+> 同步到已验收的工具层 `20261003-105341-4467d9c9`（`ALL_SCENARIOS_PASS`）。
+> 能力表改为与验收记录逐字节绑定；重整选 Equilibrium（反应网络闭合规则）；
+> 气化的 Nm³ 与"煤按纯碳"两题带默认答案、确认后走 `solid_carbon=saturation` 路线且
+> 一轮作答即可跑通；报告统一走 `report.py`；方程式识别只认箭头两侧都是化学式的写法。
+> **离线测试全部通过**：Agent 层 355、工具层自检 122 + 回归 184、打包器 17；
+> 逐项记录（含与计划的偏离）见 [docs/AGENT_FIX_NOTES.md](docs/AGENT_FIX_NOTES.md)。
+> **待办：工作站真机端到端运行**（`Run-Agent-On-Workstation.cmd`，本机无 HYSYS），
+> 以及带 `TR_KEY` 的三个场景 dry run。真机跑完之前，不能说"智能体端到端已通过验收"。
+
 ### 2.1 已完成并有真机证据
 
 **工具层 `hysys_tools/`** —— 已通过远程真机验收：
@@ -73,18 +83,17 @@ status  BASELINE_PASS_GASIFICATION_STILL_BLOCKED
 
 **模型服务** —— `qwen3.7-flash`，`enable_thinking: false`（见第 4 节）。
 
-**测试规模** —— **403 项全部通过**：工具层 144（110 selfcheck + 34 reliability）
-+ Agent 层 195（llm 23、extraction 22、normalize 33、selection 18、compiler 23、
-adapters 30、pipeline 23、graph 23）+ 打包器 17。
+**测试规模**（2026-10-03 修复后）—— **678 项全部通过**：工具层 306（122 selfcheck
++ 184 reliability）+ Agent 层 355 + 打包器 17。分套件数量见 `docs/AGENT_FIX_NOTES.md`
+与 `scripts\run-all-tests.cmd` 的输出。
 
 ### 2.2 未完成
 
 | 项 | 说明 |
 |---|---|
-| **真机上的 Agent 端到端** | 本机无 HYSYS，Agent 层验证到"规格通过预检"为止。适配器/台账/暂停恢复都有离线测试，但未在真实工作站跑过完整链路 |
-| P0-E 气化闭环 | 阻塞于题目信息（80000 Nm³/h 基准、煤定义）；未澄清前保持拒绝，这是设计行为 |
-| P1-F 图形界面 | 目前是 CLI（`python -m reactor_agent`）|
-| P1-G 交付物 | 报告已成文；Git 仓库、README 定稿、录屏、AI 对话导出待完成 |
+| **真机上的 Agent 端到端** | 本机无 HYSYS。离线链路（含适配器、台账、暂停恢复）已测；**真机运行与三个场景的 dry run 待执行**，跑完之前不能说端到端通过 |
+| 带 `TR_KEY` 的三个场景 dry run | 需要模型凭据，本地会话没有，由项目负责人在自己的环境跑（见 `docs/REVIEW_BRIEF.md` 第 3 节） |
+| P1-G 交付物 | 报告已成文；Git 仓库、录屏、AI 对话导出待完成 |
 
 ---
 

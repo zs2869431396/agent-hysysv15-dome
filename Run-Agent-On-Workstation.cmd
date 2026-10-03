@@ -18,8 +18,10 @@ rem         set TR_KEY=<your key>
 rem       (TR_BASE and TR_MODEL have working defaults.)
 rem
 rem  What it does: drives the tool layer through the agent, end to end, for
-rem  toluene and steam reforming, with a dry run of gasification first so the
-rem  refusal is visible. Every case gets its own fresh directory.
+rem  toluene, steam reforming (two cases) and gasification on the accepted
+rem  saturated-carbon route. Every case gets its own fresh directory, and the
+rem  last step is an interactive dry run so the two gasification questions and
+rem  their suggested answers are visible on screen.
 rem ============================================================================
 setlocal
 cd /d "%~dp0"
@@ -52,41 +54,51 @@ echo Run folder: %RUN%
 echo.
 
 echo ------------------------------------------------------------
-echo  [1/4] gasification: dry run, must REFUSE and execute nothing
+echo  [1/4] toluene: REAL run on HYSYS (Conversion, adiabatic)
 echo ------------------------------------------------------------
-python -m reactor_agent --graph --scenario gasification --out "%RUN%\gasification-dryrun"
-echo   ^(exit code 3 = paused for clarification, which is correct^)
-echo.
-
-echo ------------------------------------------------------------
-echo  [2/4] toluene: REAL run on HYSYS
-echo ------------------------------------------------------------
-python -m reactor_agent --scenario toluene --execute --out "%RUN%\toluene"
+python -m reactor_agent --scenario toluene --execute --accept-defaults --out "%RUN%\toluene"
 if errorlevel 1 echo   ^(non-zero exit; see the output above^)
 echo.
 
 echo ------------------------------------------------------------
-echo  [3/4] steam reforming: REAL run, two operating cases
+echo  [2/4] steam reforming: REAL run (Equilibrium, two cases)
 echo ------------------------------------------------------------
-python -m reactor_agent --scenario smr --execute --out "%RUN%\smr"
+python -m reactor_agent --scenario smr --execute --accept-defaults --out "%RUN%\smr"
 if errorlevel 1 echo   ^(non-zero exit; see the output above^)
 echo.
 
 echo ------------------------------------------------------------
-echo  [4/4] gasification: REAL run, must still refuse
+echo  [3/4] gasification: REAL run (Gibbs + saturated carbon)
 echo ------------------------------------------------------------
-python -m reactor_agent --scenario gasification --execute --out "%RUN%\gasification-execute"
-echo   ^(HYSYS must NOT have been touched: no .hsc should exist^)
+python -m reactor_agent --scenario gasification --execute --accept-defaults --out "%RUN%\gasification"
+if errorlevel 1 echo   ^(non-zero exit; see the output above^)
+echo.
+
+echo ------------------------------------------------------------
+echo  [4/4] gasification: dry run, INTERACTIVE
+echo        Two questions appear; press Enter twice to accept the
+echo        suggested answers. Nothing is simulated in this step.
+echo ------------------------------------------------------------
+python -m reactor_agent --scenario gasification --out "%RUN%\gasification-interactive"
+echo   ^(exit code 0 = the answers were accepted and the spec was compiled^)
 echo.
 
 echo ============================================================
-echo  Expected results, from the accepted tool-layer baseline
+echo  Expected results
 echo ============================================================
 echo   toluene   conversion 49.99999999999999%%
 echo             outlet: Toluene 54.2648, Benzene 27.1324, xylenes 9.0441 each
-echo   smr 710C  CH4 54.035809%%, H2 1942.8123 kmol/h, duty 39988.6148 kW
-echo   smr 600C  CH4 30.352385%%, H2 1163.6704 kmol/h, duty 20159.4980 kW
-echo   gasification: refused, 0 case files created
+echo             the same numbers as the historical baseline, digit for digit
+echo   smr       Equilibrium, both cases PASS
+echo             CH4 conversion within 0.5 percentage points of the Gibbs history
+echo               (710C 54.035809%%, 600C 30.352385%%)
+echo             duty within 1%% of 39988.6148 kW (710C) / 20159.4980 kW (600C)
+echo             a Q/K line per reaction, verdict PASS
+echo             a two-temperature comparison with its reading
+echo   gasification  saturated-carbon route PASS
+echo             CO yield about 40.14%%, carbon conversion about 41.16%%
+echo             external duty about 84656 kW
+echo             the LIQUID stream is labelled as solid carbon
 echo.
 echo Results and specs are under: %RUN%
 echo Send back this whole folder, or the zip if one was produced.

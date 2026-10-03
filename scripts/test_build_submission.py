@@ -115,10 +115,22 @@ class Collection(unittest.TestCase):
         self.assertTrue(any(key.endswith('summary.json') for key in evidence))
 
     def test_no_excluded_file_reaches_the_collection(self):
+        """A stray archive is a build artefact; a named evidence ZIP is deliberate.
+
+        The rule is unchanged for everything except the one archive named in
+        `EVIDENCE_ZIPS`: the accepted remote run exists locally only as the ZIP it
+        produced, and dropping it would break the evidence chain from the acceptance
+        record to the run that back it.
+        """
         contents, _ = pack.collect()
+        allowed = {name.replace('\\', '/') for name in pack.EVIDENCE_ZIPS}
         offenders = [key for key in contents
-                     if Path(key).suffix.lower() in {'.hsc', '.pyc', '.rdp', '.zip'}]
+                     if Path(key).suffix.lower() in {'.hsc', '.pyc', '.rdp', '.zip'}
+                     and key not in allowed]
         self.assertEqual(offenders, [])
+        for name in allowed:
+            if (pack.PROJECT / name).is_file():
+                self.assertIn(name, contents)
 
     def test_no_credentials_in_what_would_be_packaged(self):
         contents, _ = pack.collect()

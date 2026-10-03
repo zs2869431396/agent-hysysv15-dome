@@ -27,28 +27,34 @@ ToolSpec         hysys-agent/spec/1，工具层接受的严格文档
 ### 真机验收（工具层，已完成）
 
 ```
-run_id 20261002-144131-d442afae   (远程 Python 3.12.4, Windows build 19045)
-status BASELINE_PASS_GASIFICATION_STILL_BLOCKED
+run_id 20261003-105341-4467d9c9   (远程 Python 3.12.4, Windows build 19045)
+status ALL_SCENARIOS_PASS
 ```
 
-| 工况 | 结果 | 与历史基线 |
-|---|---|---|
-| 甲苯歧化 10000 kg/h、380°C、2.5 MPa | 转化率 **49.99999999999999%** | 逐位相同（rel = 0.00E+000）|
-| 甲烷蒸汽重整 710°C | CH₄ 54.035809%、H₂ 1942.812 kmol/h | 逐位相同 |
-| 甲烷蒸汽重整 600°C | CH₄ 30.352385%、H₂ 1163.670 kmol/h | 逐位相同 |
-| 水煤浆气化 | 预检拒绝，**0 个 `.hsc` 文件** | 按设计 |
+| 工况 | 结果 |
+|---|---|
+| 甲苯歧化 10000 kg/h、380°C、2.5 MPa | Conversion 绝热，转化率 **49.99999999999999%**（与历史基线逐位相同）|
+| 甲烷蒸汽重整 710°C | Equilibrium 等温气相，PASS；同温度 Gibbs 对照 CH₄ 54.035809%、H₂ 1942.812 kmol/h |
+| 甲烷蒸汽重整 600°C | Equilibrium 等温气相，PASS；同温度 Gibbs 对照 CH₄ 30.352385%、H₂ 1163.670 kmol/h |
+| 水煤浆气化 1400°C | Gibbs + `solid_carbon=saturation`，PASS |
 
-### 端到端（Agent 层，真实模型调用）
+验收清单（13 个运行文件的 SHA256）在 `docs/tool-acceptance-20261003-105341.json`；
+`reactor_agent/capabilities.py` 运行时会核对每一个哈希，任何不一致都会把
+`verified` 降为 `experimental`。历史验收 `20261002-144131-d442afae`
+（甲苯 + Gibbs 重整，当时气化被拒绝）只代表历史版本。
 
-`python -m reactor_agent --graph --scenario <名称>`：
+### 端到端（Agent 层）
+
+`python -m reactor_agent --scenario <名称>`（默认即状态图，可暂停追问）：
 
 | 场景 | 结果 |
 |---|---|
 | 甲苯 | `READY` → 规格通过预检，元素守恒（C 14=6+8×3×⅓，H 16=6+10×3×⅓）|
-| 重整 | `READY`，**两个工况各自通过预检**；自动记录假设：进料流量 1370.37 kmol/h |
-| 气化 | `WAITING_INPUT`，**未创建任何案例**，列出待澄清问题 |
+| 重整 | `READY`，**两个工况各自通过预检**，选 Equilibrium；自动记录假设：自定流量甲烷 1000 kmol/h（总 3700 kmol/h，约 128 kt/a）|
+| 气化 | 先 `WAITING_INPUT`（两题都带默认答案），确认后 `READY`：`flow_input=normal_volume`、`solid_carbon=saturation` |
 
-**离线测试 339 项全部通过**（工具层 144 + Agent 层 195）。
+**离线测试 678 项全部通过**（工具层 122 自检 + 184 回归；Agent 层 355；打包器 17）。
+带模型凭据的三个场景 dry run 与工作站真机运行**待执行**，见下。
 
 ## 三、几个值得说的设计决定
 
@@ -64,9 +70,12 @@ status BASELINE_PASS_GASIFICATION_STILL_BLOCKED
 ### 2. "信息不足"与"授权自定"是两件事
 
 - 气化题的 `80000 Nm3/h` 是**真的信息不足**：Nm³ 只对气体有意义，而煤是固体、
-  水是液体，且未说明标况与所指流股。系统**拒绝执行并提问**，不自行选定解释。
-- 重整题的"进料流量可以自定"是**授权我们选**。系统按主组分 1000 kmol/h 的工业
-  规模推出总流量，**记为 `agent_default` 假设**并在报告中声明。
+  水是液体，且未说明标况与所指流股。系统**先提问、不自行选定解释**；两个问题都带
+  默认答案（"单股混合进料总量，0°C/101.325 kPa"和"按纯碳处理"），用户确认后才编译规格，
+  确认前不创建任何案例。
+- 重整题的"进料流量可以自定"是**授权我们选**。系统锚定到**含碳的反应物**（甲烷，而不是
+  比例最大的水）取 1000 kmol/h，推出总流量 3700 kmol/h，**记为 `agent_default` 假设**并在
+  报告中声明。
 
 把这两者混为一谈，要么会拦住用户明确授权的运行，要么会把猜测伪装成事实。
 
@@ -109,29 +118,32 @@ status BASELINE_PASS_GASIFICATION_STILL_BLOCKED
 
 ## 四、边界与不足（不隐瞒）
 
-**已真机验证**：Conversion 单反应绝热、Gibbs 等温气相。
+**已真机验证**：Conversion 单反应绝热、Equilibrium 等温气相、Gibbs 等温气相，
+以及 Gibbs + 饱和碳路线（气化，碳 + 水进料）。
 
 **工具层明确拒绝**（不静默降级）：
 
 | 组合 | 原因 |
 |---|---|
-| Equilibrium | 工作站上 Ln(K) 源无法设为 Gibbs（恒为 FixedK=2）|
+| 绝热 Equilibrium | Ln(K) 来源只能在等温下设置 |
+| 液相或含固体的 Equilibrium | Equilibrium 只接受气相反应 |
 | Gibbs + 绝热 | 执行器对该组合不设热边界，从未验证 |
 | 多个 Conversion 反应 | 独立校验无法区分各反应各自的转化率 |
 | CSTR / PFR | 未实现；三个场景均未提供动力学参数 |
 
 **已知物理限制**：HYSYS 组分 Gibbs 数据温区上限读回 **426.85 K**，而重整工况需要
 873–983 K（600/710°C），因此平衡常数**可能是外推值**。工具层在结果中输出该
-warning。
+warning。出口 Q/K 接近 1 只说明与该温区拟合出的平衡关系自洽，**不能证明**高温区
+Gibbs 数据本身准确。
 
 **未完成**：
 
-- **气化场景的定量结果**依赖用户澄清（`80000 Nm3/h` 的基准与所指流股；煤能否
-  按纯固体碳处理）。未澄清前保持拒绝，这是设计行为而非缺陷。
 - **真机上的 Agent 端到端**尚未跑过：本机没有 HYSYS，Agent 层验证到"规格通过
-  预检"为止。执行适配器、台账、暂停恢复都有离线测试覆盖（含 30 项适配器测试和
-  23 项图测试），但没有在真实工作站上跑过一次完整链路。
-- 界面为 CLI（`python -m reactor_agent`），未做图形界面。
+  预检"为止。执行适配器、台账、暂停恢复、网页界面都有离线测试覆盖，但没有在真实
+  工作站上跑过一次完整链路。跑法与判读见 `Run-Agent-On-Workstation.cmd` 与
+  `docs/REMOTE_VALIDATION.md`。
+- **带 `TR_KEY` 的三个场景 dry run** 需要在有凭据的环境里执行（见 `docs/REVIEW_BRIEF.md`
+  第 3 节）；本条记录写于一个没有凭据的会话。
 
 ## 五、可复现性
 
@@ -144,10 +156,17 @@ scripts\run-all-tests.cmd
 
 # 端到端（dry run，不会启动任何模拟）
 $env:TR_KEY = "<key>"
-python -m reactor_agent --graph --scenario toluene
+python -m reactor_agent --scenario toluene
+
+# 带追问的场景：回车采用默认答案，或让它全自动
+python -m reactor_agent --scenario gasification
+python -m reactor_agent --scenario gasification --accept-defaults
+
+# 本机网页界面（只监听 127.0.0.1；key 在页面上填，不落盘）
+python -m reactor_agent.web
 
 # 真机（在装有 HYSYS 的工作站上）
-python -m reactor_agent --scenario toluene --execute
+python -m reactor_agent --scenario toluene --execute --accept-defaults
 ```
 
 **凭据只从环境变量读取**（`TR_BASE` / `TR_KEY` / `TR_MODEL`），不写入任何文件、

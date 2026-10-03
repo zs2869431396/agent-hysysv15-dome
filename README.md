@@ -1,6 +1,8 @@
 # AI 驱动的化工反应器建模
 
-> **2026-10-03 工具层更新**：重整正式示例改用 Equilibrium，饱和碳气化进入主验收；新版已通过离线测试，完整真机验收待运行。请先阅读 [接入与远程运行说明](docs/EQUILIBRIUM_INTEGRATION.md)。下方旧验收表描述历史版本，不能作为新版通过的证明；智能体入口同步另行进行。
+> **2026-10-03 状态**：工具层已通过验收 `20261003-105341-4467d9c9`（`ALL_SCENARIOS_PASS`）；
+> **智能体层已同步**到这个工具层，离线测试全部通过，**端到端真机运行待执行**。
+> 第一次接触本项目请先读 [docs/REVIEW_BRIEF.md](docs/REVIEW_BRIEF.md)。
 
 自然语言描述 → **自主判断反应器类型并说明理由** → 在 HYSYS 中实际创建并求解 →
 独立校验 → 返回可解释的计算结果。
@@ -17,29 +19,34 @@
 **工具层已通过真机验收。**
 
 ```
-run_id 20261002-144131-d442afae   (远程 Python 3.12.4, Windows build 19045)
-status BASELINE_PASS_GASIFICATION_STILL_BLOCKED
+run_id 20261003-105341-4467d9c9   (远程 Python 3.12.4, Windows build 19045)
+status ALL_SCENARIOS_PASS
 ```
 
-| 工况 | 模型 | 结果 | 与历史基线 |
-|---|---|---|---|
-| 甲苯歧化 10000 kg/h、380°C、2.5 MPa | Conversion（绝热） | 转化率 49.99999999999999% | 逐位相同 |
-| 甲烷蒸汽重整 710°C | Gibbs（等温） | CH₄ 54.035809%、H₂ 1942.812 kmol/h | 逐位相同 |
-| 甲烷蒸汽重整 600°C | Gibbs（等温） | CH₄ 30.352385%、H₂ 1163.670 kmol/h | 逐位相同 |
-| 水煤浆气化（原题输入） | — | 预检拒绝，**未创建案例** | 按设计 |
+| 工况 | 模型 | 结果 |
+|---|---|---|
+| 甲苯歧化 10000 kg/h、380°C、2.5 MPa | Conversion（绝热） | 转化率 49.99999999999999% |
+| 甲烷蒸汽重整 710°C | Equilibrium（等温气相） | 已验收；同温度 Gibbs 对照的 CH₄ 54.035809% |
+| 甲烷蒸汽重整 600°C | Equilibrium（等温气相） | 已验收；同温度 Gibbs 对照的 CH₄ 30.352385% |
+| 水煤浆气化 1400°C | Gibbs + `solid_carbon=saturation` | 已验收（碳 + 水进料） |
 
-证据：`tool-layer-runs/acceptance-20261002-144131-d442afae/`（含 `summary.json`、
-各工况 `result.json`/`steps.json`、健康检查，以及远程代码哈希）。
+验收清单（13 个运行文件的 SHA256）：`docs/tool-acceptance-20261003-105341.json`；
+`reactor_agent/capabilities.py` 运行时会逐个核对，**改一个字节所有 `verified` 自动降为
+`experimental`**。证据：`tool-layer-runs/acceptance-20261003-105341-4467d9c9/`。
 
-**Agent 层已打通自然语言入口**（真实模型调用，本机无 HYSYS 故止于预检）：
+历史验收 `20261002-144131-d442afae`（甲苯 + Gibbs 重整，当时气化被拒绝）见
+`tool-layer-runs/acceptance-20261002-144131-d442afae/`，**只代表历史版本**。
+
+**Agent 层已打通自然语言入口**（离线测试通过；带模型 key 的 dry run 与真机运行待执行）：
 
 | 场景 | 结果 |
 |---|---|
-| 甲苯歧化 | `READY` —— 规格通过预检，元素守恒 |
-| 甲烷蒸汽重整 | `READY` —— 两个工况各自通过预检，自动记录假设（进料流量 1370.37 kmol/h）|
-| 水煤浆气化 | `WAITING_INPUT` —— **未创建任何案例**，列出待澄清问题 |
+| 甲苯歧化 | `READY` —— Conversion（verified），反应名 `RXN-1`、相态 `combined` |
+| 甲烷蒸汽重整 | `READY` —— Equilibrium（verified），两个工况，案例名 `smr-710C`/`smr-600C`，自定流量甲烷 1000 kmol/h（总 3700 kmol/h，约 128 kt/a） |
+| 水煤浆气化 | 先 `WAITING_INPUT`（两题都带默认答案）；回车采用默认后 `READY` —— Gibbs（verified），spec 含 `flow_input: normal_volume` 与 `solid_carbon: saturation` |
 
-**离线测试 403 项全部通过**：工具层 144 + Agent 层 242 + 打包器 17。
+**离线测试全部通过**：工具层 122 项自检 + 184 项回归，Agent 层 355 项，打包器 17 项；
+`scripts\run-all-tests.cmd` 13 个套件全绿。各套件数量见 `docs/AGENT_FIX_NOTES.md`。
 
 ## 目录结构
 
@@ -49,18 +56,22 @@ status BASELINE_PASS_GASIFICATION_STILL_BLOCKED
 │   ├── core.py               # 契约、组分/物性包映射、单位换算、元素守恒
 │   ├── precheck.py           # 离线预检：不碰 HYSYS，毫秒级，一次列出全部问题
 │   ├── reactor.py            # 三个反应器驱动 + COM 调用序列 + 案例所有权保护
+│   ├── equilibrium.py        # Equilibrium：ln K 拟合与出口 Q/K 校验
+│   ├── saturation.py         # 饱和碳路线：转化率反应器 + 气相 Gibbs + 外层求解
+│   ├── native_flow.py        # 标准体积（Nm3/h）进料的换算
 │   ├── validate.py           # 独立校验：守恒、转化率、CO 收率、干基分数
 │   ├── main.py               # CLI 与 build_case
-│   ├── examples.py           # 三个考核场景的示例规格
-│   ├── capabilities.py       # 机器可读能力表
+│   ├── examples.py           # 考核场景的示例规格
+│   ├── capabilities.py       # 机器可读能力表（其文字仍是打包前的 pending，见 REVIEW_BRIEF 陷阱 5）
 │   ├── remote_check.py       # 真机验收运行器（互斥、超时、基线比对、证据 ZIP）
-│   ├── selfcheck.py          # 110 项离线自检
-│   └── test_reliability.py   # 34 项可靠性回归
+│   ├── selfcheck.py          # 122 项离线自检
+│   └── test_reliability.py   # 184 项可靠性回归
 ├── reactor_agent/            # 自然语言入口
 │   ├── schemas.py            # 三层数据契约（pydantic）
-│   ├── capabilities.py       # 按「模型+热边界+相态+反应数」查能力状态
-│   ├── selection.py          # 选型规则（题目第 8 节）
+│   ├── capabilities.py       # 按验收记录核对工具层哈希，再查「模型+热边界+相态+反应数」
+│   ├── selection.py          # 选型规则（题目第 8 节），含"反应网络闭合 → Equilibrium"
 │   ├── compiler.py           # ModelingPlan → hysys-agent/spec/1
+│   ├── report.py             # 唯一的报告渲染器（图与单遍流程共用）
 │   ├── llm.py                # 模型客户端：降级链、控速、enable_thinking=false
 │   ├── extraction.py         # 模型侧契约 + 防幻觉检查（grounding）
 │   ├── normalize.py          # 确定性归一化：单位、组分名、反应式、工况
@@ -72,14 +83,17 @@ status BASELINE_PASS_GASIFICATION_STILL_BLOCKED
 │   │   ├── plan.py           #   事实 → 归一化/选型/编译/预检（确定性）
 │   │   ├── ask.py            #   暂停追问（无任何副作用）
 │   │   ├── execute.py        #   唯一有副作用的节点，受 plan 的状态门控
-│   │   ├── explain.py        #   汇总为中文解释，声明我方假设
+│   │   ├── explain.py        #   调用 report.py 渲染中文解释
 │   │   └── answers.py        #   把用户作答并回事实（宽松解析）
 │   ├── adapters/             # 子进程执行工具层 + 执行台账
-│   ├── __main__.py           # CLI：python -m reactor_agent
-│   └── test_*.py             # 195 项离线测试
+│   ├── __main__.py           # CLI：python -m reactor_agent（默认走状态图）
+│   └── test_*.py             # 355 项离线测试
 ├── docs/
 │   ├── TOOL_REFERENCE.md         # 工具层接口参考（agent 可直接读）
 │   ├── REMOTE_VALIDATION.md      # 远程验收步骤与判读
+│   ├── EQUILIBRIUM_INTEGRATION.md # Equilibrium 与饱和碳路线的接入说明
+│   ├── REVIEW_BRIEF.md           # 给独立审查方的说明（先读它）
+│   ├── AGENT_FIX_NOTES.md        # 本次智能体层修复逐步记录（含偏离说明）
 │   ├── GWOA_MIGRATION.md         # 智能体设计的迁移来源
 │   └── AGENT_IMPLEMENTATION_PLAN.md  # Agent 搭建规划（规划时的检查记录）
 ├── scripts/
@@ -88,15 +102,14 @@ status BASELINE_PASS_GASIFICATION_STILL_BLOCKED
 │   ├── bench_llm.py          # 模型准确率与速度基准
 │   ├── pick_model.py         # 批量模型选型（TR_MODELS=a,b,c）
 │   ├── probe_feeds_add.py    # Feeds.Add 失败定位探针
-│   └── run-all-tests.cmd     # 一键跑全部离线测试
+│   └── run-all-tests.cmd     # 一键跑全部离线测试（13 个套件）
 ├── tool-layer-runs/          # 运行产物与验收证据
 ├── baseline_expected.json    # 历史真机结果，用于容差比对（不是本版输出）
-├── RELEASE_MANIFEST.json     # 发布包逐文件哈希
 ├── PROJECT_PLAN.md           # 项目计划与当前进度
 ├── TECH_STACK.md             # 技术栈决策与理由
 ├── requirements.txt
 ├── README.md
-└── Run-*.cmd                 # 双击入口：真机验收 / 仅离线检查
+└── Run-*.cmd                 # 双击入口：Agent 真机流程 / 仅离线检查 / 工具层验收
 ```
 
 ## 环境与安装
@@ -117,10 +130,11 @@ python -m pip install -r requirements.txt
 **不连接 HYSYS**（任何机器都可以）：
 
 ```bash
-python -m hysys_tools.selfcheck                              # 110 项自检
-python -m unittest hysys_tools.test_reliability              # 34 项回归
+python -m hysys_tools.selfcheck                              # 122 项自检
+python -m unittest hysys_tools.test_reliability              # 184 项回归
 python -m unittest reactor_agent.test_selection              # 选型规则
 python -m unittest reactor_agent.test_compiler               # 规格编译
+python -m unittest reactor_agent.test_report                 # 报告渲染
 python -m hysys_tools --list-capabilities                    # 能力表（JSON）
 python -m hysys_tools --validate-only --spec specs\case.json # 离线预检
 python -m hysys_tools.remote_check --offline                 # 离线验收（产出证据 ZIP）
@@ -130,39 +144,47 @@ python -m hysys_tools.remote_check --offline                 # 离线验收（�
 
 ## 用自然语言驱动（Agent 层）
 
+**默认即状态图**：请求信息不足时会暂停提问，而不会带着猜测往下走。
+
 ```bash
 # 凭据只从环境变量读，不写入任何文件
 # PowerShell:  $env:TR_KEY = "<key>"
 
 python -m reactor_agent --list-scenarios          # 三个内置场景
 python -m reactor_agent --scenario toluene        # 默认 dry run：不启动任何模拟
+python -m reactor_agent --scenario gasification   # 终端逐题作答（回车 = 采用默认答案）
+python -m reactor_agent --scenario gasification --accept-defaults
+python -m reactor_agent --scenario gasification --no-input     # 只打印问题，退出码 3
 python -m reactor_agent --scenario toluene --execute    # 真的驱动 HYSYS
 python -m reactor_agent --text "甲苯进料10000kg/h，380℃，2.5MPa，转化率50%"
 python -m reactor_agent --file request.txt --basis mass_fraction
-python -m reactor_agent --graph --scenario smr    # 走状态图，可暂停追问
+python -m reactor_agent --scenario toluene --single-pass  # 旧的单遍流程，不能追问
 ```
 
 **默认不执行任何模拟**（dry run）：它会真实地抽取、归一化、选型、编译并预检，
 然后打印"本来会运行"的规格。这也是本机（无 HYSYS）验证前半段的方式。
 
-**暂停与恢复**：当请求信息不足时，`--graph` 会暂停并列出问题，**此时没有创建任何
-案例**；用 `--answer` 作答后从检查点继续：
+**暂停与恢复**：信息不足时运行会暂停并在运行目录写下 `paused.json`，**此时没有创建任何
+案例**；`--answer` 不带 `--out` 时会**自动找到最近一次暂停的运行**并续上：
 
 ```bash
-python -m reactor_agent --graph --scenario gasification
+python -m reactor_agent --scenario gasification --no-input
 #   PAUSED for clarification. Nothing was executed.
-#   ? 进料流量 80000 Nm3/h 指的是哪一股物流…
-#     id: q-volumetric-flow
-python -m reactor_agent --graph --scenario gasification \
-       --answer 'q-volumetric-flow=80000 Nm3/h'
+#   ? 进料流量 80000 Nm3/h 按什么理解？默认：单股混合进料的总量，标准状态 0°C / 101.325 kPa。…
+#     id: q-volumetric-flow    default: 总进料，0°C/101.325 kPa
+#   ? 煤能否按纯固体碳处理？默认：按纯碳处理。…
+#     id: q-coal-definition    default: 按纯碳处理
+
+python -m reactor_agent --scenario gasification \
+       --answer q-volumetric-flow=默认 --answer q-coal-definition=按纯碳处理
 ```
 
-**在装有 HYSYS 的工作站上**：
+**在装有 HYSYS 的工作站上**（本机没有 HYSYS，这一步必须由你在工作站执行）：
 
 1. 启动 HYSYS，处理掉弹窗，并关闭遗留的案例。
 2. 在**当前窗口**设置凭据：`set TR_KEY=<your key>`（只从环境变量读，不落盘）。
-3. 双击 `Run-Agent-On-Workstation.cmd` —— 它会先 dry run 气化（应拒绝），
-   再真机跑甲苯与重整（两个工况），最后确认气化仍未创建任何案例。
+3. 双击 `Run-Agent-On-Workstation.cmd` —— 四步：真机跑甲苯、真机跑重整（两个工况）、
+   真机跑气化（饱和碳路线），最后 dry run 气化做交互演示（两次回车采用默认答案）。
 4. 回传它打印的 `agent-runs\workstation-*\` 整个目录。
 
 只验收工具层（不经过 Agent）则用 `Run-Remote-Validation.cmd`。
@@ -180,28 +202,45 @@ python -m hysys_tools --spec specs\case.json --folder runs\unique-run-id
 
 ## 能力范围与边界
 
-已真机验证：Conversion 单反应绝热、Gibbs 等温气相体系。
+每一条都由 `reactor_agent/capabilities.py` 按「模型 + 热边界 + 相态 + 反应数 + 是否含固体」
+逐格给出，并且只在工具层哈希仍与验收记录一致时才算 `verified`。
 
-**不支持**（工具层会明确拒绝，不会静默降级）：
+**已验收（`verified`）**
+
+| 组合 | 说明 |
+|---|---|
+| Conversion，单反应，绝热 | 甲苯歧化 |
+| Equilibrium，等温，气相 | 甲烷蒸汽重整（两个工况）；平衡常数按出口温度拟合，出口 Q/K 校验 |
+| Gibbs，等温，气相 | 作为重整的对照方案 |
+| Gibbs，等温，含固体碳 | 气化：走 `solid_carbon=saturation` 组合流程（**不是**单台库 Carbon 的 Gibbs） |
+
+**不支持**（工具层会明确拒绝，不会静默降级）
 
 | 组合 | 原因 |
 |---|---|
-| Equilibrium | 工作站上 Ln(K) 源无法设为 Gibbs（恒为 FixedK=2），拒绝而非悄悄用固定 K |
-| Gibbs + 绝热 | 执行器对该组合不设热边界，从未验证 |
-| 多个 Conversion 反应 | 独立校验无法区分各反应各自的转化率，会把总转化率冒充成单反应转化率 |
 | CSTR / PFR | 没有实现。三个场景都未提供动力学参数，属于已声明的能力边界 |
+| 多个 Conversion 反应 | 独立校验无法区分各反应各自的转化率，会把总转化率冒充成单反应转化率 |
+| 绝热 Equilibrium | 无法设置 Ln(K) 来源；只验收了等温 |
+| 液相或含固体的 Equilibrium | Equilibrium 只接受气相反应 |
+| Gibbs + 绝热 | 执行器对该组合不设热边界，从未验证 |
 
-**实验性**（代码路径存在，但没有通过验收的真机记录）：Conversion 等温、
-转化率系数、涉及固体碳的 Gibbs（气化）。
+**实验性**（代码路径存在，但没有通过验收的真机记录）：Conversion 等温、转化率随温度变化的
+系数。
+
+**气化需要确认的两项**（确认前不会创建任何案例）
+
+1. **`80000 Nm3/h` 指的是哪一股物流、什么标准状态**。煤是固体、水是液体，Nm³ 只对气体
+   有意义。默认答案是把 Nm³ 理解为**单股混合进料的总量，0°C / 101.325 kPa**；也可以给出
+   其他标准状态，或直接改给质量或摩尔流量。不同解释会给出完全不同的 CO 收率，所以必须由
+   用户确认，而不是系统自己选定。
+2. **煤能否按纯固体碳处理**。题目只说"灰分不做考虑"，未给煤的组成；按元素分析建模需要
+   工具层另行扩展（目前只验收了"碳 + 水"进料）。默认答案是"按纯碳处理"，这会影响碳平衡
+   与 CO 收率的分母，因此单独声明。
 
 **已知物理限制**：HYSYS 组分 Gibbs 数据温区上限读回为 426.85 K，而重整工况需要
 873–983 K（600/710°C），因此平衡常数可能是**外推值**。工具层在结果中输出该
-warning，报告不得隐瞒。
-
-**气化场景的输入保护**：题目给的流量是 `80000 Nm3/h`，但煤是固体、水是液体，
-Nm³ 只对气体有意义，且未说明标况与所指流股。工具层因此**拒绝执行并列出待澄清
-问题**，不自行选定一种解释——不同解释会给出完全不同的 CO 收率。这是输入保护，
-不代表气化模拟已通过。
+warning，报告不得隐瞒。Q/K 接近 1 只能说明出口与该温区拟合出的平衡关系自洽，
+**不能证明**高温区 Gibbs 数据本身准确。
 
 ## 模型服务（Agent 层）
 
@@ -253,13 +292,18 @@ python scripts/build_release.py
 
 - **项目报告（1–2 页）**：[REPORT.md](REPORT.md)
 - **给独立审查方的说明**：[docs/REVIEW_BRIEF.md](docs/REVIEW_BRIEF.md)
-  —— 交接检查前请先读它：里面有**看起来像 bug 但属于设计意图**的十条陷阱
-  （气化被拒绝、`experimental` 的含义、为什么不改 `hysys_tools/`）、分钟级验证步骤，
+  —— 交接检查前请先读它：里面有**看起来像 bug 但属于设计意图**的十几条陷阱
+  （气化为什么先问两个问题、`experimental` 的含义、为什么不改 `hysys_tools/`）、分钟级验证步骤，
   以及已声明的局限
+- **本次智能体层修复的逐步记录**：[docs/AGENT_FIX_NOTES.md](docs/AGENT_FIX_NOTES.md)
+  —— 每一步的实际改动、偏离计划的地方及理由、最终测试数量
 - **项目计划与当前进度**：[PROJECT_PLAN.md](PROJECT_PLAN.md)
 - **技术栈决策与理由**：[TECH_STACK.md](TECH_STACK.md)
 - 工具层接口与错误处理：[docs/TOOL_REFERENCE.md](docs/TOOL_REFERENCE.md)
+- Equilibrium 与饱和碳路线的接入说明：[docs/EQUILIBRIUM_INTEGRATION.md](docs/EQUILIBRIUM_INTEGRATION.md)
 - 远程验收流程：[docs/REMOTE_VALIDATION.md](docs/REMOTE_VALIDATION.md)
+- 第一轮外部审查的冻结证据：[docs/review-20261003/](docs/review-20261003/)
+  （针对 10-03 上午的版本，**不代表当前状态**）
 - **智能体设计的迁移来源**：[docs/GWOA_MIGRATION.md](docs/GWOA_MIGRATION.md)
 - Agent 搭建规划（**规划时的历史记录，不代表当前状态**）：[docs/AGENT_IMPLEMENTATION_PLAN.md](docs/AGENT_IMPLEMENTATION_PLAN.md)
 

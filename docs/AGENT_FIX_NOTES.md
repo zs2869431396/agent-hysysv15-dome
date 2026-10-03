@@ -587,6 +587,114 @@ ALL SUITES PASSED.
 **测试数量**：`reactor_agent` 355、`hysys_tools` 184，两者全部通过；本步只做核对，
 没有代码改动，因此没有新的数字变化。最终总数（含步骤 13 之后）记在文件末尾。
 
+---
+
+## 步骤 12：README、cmd 脚本与文档
+
+### 12.1 过时说法清查
+
+按计划在 `README.md REPORT.md PROJECT_PLAN.md Run-Agent-On-Workstation.cmd` 上搜
+`拒绝|refuse|BLOCKED|FixedK|Ln(K)|unsupported|experimental|--graph`，逐条判断后改写如下。
+（`docs/` 下的文档已另行改好，见 12.4。）
+
+### 12.2 `README.md`
+
+- 顶部提示框改为"工具层已通过验收 `20261003-105341-4467d9c9`（ALL_SCENARIOS_PASS）；
+  智能体层已同步，离线测试通过，端到端真机运行待执行"。
+- "当前状态"的工具层表格改为甲苯 Conversion；重整 Equilibrium 两个工况（另注 Gibbs 对照）；
+  气化走饱和碳路线。旧 `d442afae` 表移到"历史验收"说明。
+- Agent 层表格改为甲苯 READY（`RXN-1`/`combined`）、重整 READY（Equilibrium，两工况，
+  案例名 `smr-710C`/`smr-600C`，甲烷 1000 kmol/h、约 128 kt/a）、气化先 WAITING_INPUT
+  （两题都带默认答案）后 READY。
+- "能力范围与边界"整节按步骤 2 的判定表重写：分成"已验收（4 行）""不支持（5 行）"
+  "实验性（2 项）"。删掉"Ln(K) 源恒为 FixedK=2"那一行，删掉"气化场景的输入保护"整段，
+  改为"气化需要确认的两项"，写明默认答案是什么、以及为什么必须问。
+- "用自然语言驱动"一节：默认即状态图；示例改为 `--scenario gasification`（终端逐题作答）、
+  `--accept-defaults`、`--no-input`、`--answer` 不带 `--out`、`--single-pass`；
+  暂停/恢复示例换成真实的两题与恢复命令。工作站一节改成四步流程。
+- 目录结构加上 `report.py`、`test_report.py`、`test_cli.py`、`docs/AGENT_FIX_NOTES.md`、
+  `docs/EQUILIBRIUM_INTEGRATION.md`、`docs/REVIEW_BRIEF.md`、`docs/review-20261003/`；
+  测试数量按实际运行结果填写（自检 122、回归 184、Agent 355）；删掉 `RELEASE_MANIFEST.json` 一行。
+- "快速开始"里过时的 `110 项自检 / 34 项回归` 改为 `122 / 184`，并补一条 `test_report`。
+- 文档索引补上 `AGENT_FIX_NOTES.md`、`EQUILIBRIUM_INTEGRATION.md`、`review-20261003/`。
+
+### 12.3 `Run-Agent-On-Workstation.cmd`（四步，全部新运行目录）
+
+| 步骤 | 命令 | 预期 |
+| --- | --- | --- |
+| 1/4 | `--scenario toluene --execute --accept-defaults --out "%RUN%\toluene"` | 退出码 0，转化率 50% |
+| 2/4 | `--scenario smr --execute --accept-defaults --out "%RUN%\smr"` | 退出码 0，两个工况都 Equilibrium 且 PASS |
+| 3/4 | `--scenario gasification --execute --accept-defaults --out "%RUN%\gasification"` | 退出码 0，饱和碳路线 PASS |
+| 4/4 | `--scenario gasification --out "%RUN%\gasification-interactive"` | dry run，终端弹出两个问题，按两次回车 |
+
+文件末尾"预期结果"改为：甲苯逐位同历史基线；重整 Equilibrium 两个工况、CH₄ 转化率与
+Gibbs 历史值差 ≤0.5 个百分点、热负荷相对差 ≤1%、每个反应有 Q/K 行且判定 PASS、有温度
+对比与解读；气化 CO 收率约 40.14%、碳转化率约 41.16%、外供热约 84656 kW、LIQUID 标为
+固相碳。删掉 `gasification: refused, 0 case files created` 与所有 `must REFUSE` 行。
+**该文件按要求存成 CRLF**（实测 CRLF=124、bare-LF=0）。
+
+### 12.4 `docs/` 下的文档
+
+计划说这 6 份"已改好，随本计划提供"。实际核对：`docs/REVIEW_BRIEF.md`、
+`docs/TOOL_REFERENCE.md`、`docs/EQUILIBRIUM_INTEGRATION.md`、`docs/REMOTE_VALIDATION.md`、
+`docs/AGENT_IMPLEMENTATION_PLAN.md` 与新增的 `docs/review-20261003/`（5 个文件）
+**在本仓库里已经是新版**——步骤 0 的 "sync docs from the updated repository" 提交
+（`5688c34`）就是这次同步，`README/REVIEW_BRIEF` 里也已经有 `AGENT_FIX_NOTES.md` 的引用、
+陷阱 11/12/13 等本次修复后的结论。因此**不需要再覆盖一次**：我用
+`git show 5688c34 --stat` 核对了这 6 项的来源，并与只读参考仓库
+`D:\BiShi\hysys-agent\docs\` 逐文件比对 SHA256，**五项全部相同**。
+`TOOL_REFERENCE.md` 的换行也核对过（保持原样，未被本次改动触碰）。
+`docs/GWOA_MIGRATION.md` 未动。
+**`docs/NATIVE_FLOW_UPDATE.md` 已删除**（`grep NATIVE_FLOW_UPDATE` 现在只剩计划文档本身）；
+**根目录 `RELEASE_MANIFEST.json` 已删除**，并从 `build_submission.py` 的 `INCLUDE_FILES`
+里去掉（`build_release.py` 第 48 行会在发布 ZIP 内部重新生成它，不受影响）。
+
+### 12.4b 验收证据 ZIP
+
+计划步骤 0.6 说"如果工作站上还留着验收 `20261003-105341-4467d9c9` 的证据 ZIP，把它复制到
+`tool-layer-runs/`；文件缺失不影响代码，但报告的证据链会少一环"。
+查找结果：仓库里没有，但**在 `D:\BiShi\hysys-agent-repair-20261003-184729-bb0ebe\tool-layer-runs\`
+下找到了 `acceptance-20261003-105341-4467d9c9.zip`**。核对无误后才复制：
+ZIP 内 `summary.json` 的 `run_id` = `20261003-105341-4467d9c9`、`status` =
+`ALL_SCENARIOS_PASS`、`tool_revision` = `2026-10-03-equilibrium-integration-1`，
+且 `source_hashes.json` 里 13 个 `hysys_tools/` 文件的 SHA256 与
+`docs/tool-acceptance-20261003-105341.json` **逐条相同**（0 处不同）。
+复制目标 `tool-layer-runs/acceptance-20261003-105341-4467d9c9.zip`，**只新增，未改动
+`tool-layer-runs/` 里的任何已有内容**。
+
+### 12.4c 打包器调整
+
+`scripts/build_submission.py`：
+- `INCLUDE_FILES` 去掉 `RELEASE_MANIFEST.json`，加入 `Run-Agent-UI.cmd`（步骤 13 的入口）。
+- 新增 `EVIDENCE_ZIPS`，把上面那份证据 ZIP 显式纳入；`.zip` 本来在排除之列（防止误打包
+  构建产物），所以对这一个做了直读并注明理由。
+- `EXCLUDE_NAMES` 加入 `.env`（它不在允许清单里，但显式列名可以让排除在将来有人把根目录
+  整体加进清单时依然成立）。
+- 顺带修改 `scripts/test_build_submission.py::Collection.test_no_excluded_file_reaches_the_collection`：
+  规则改为"除 `EVIDENCE_ZIPS` 里点名的归档外，任何 `.hsc/.pyc/.rdp/.zip` 都不得进入"，
+  并额外断言点名的证据 ZIP 确实进了包。这是**唯一一处为配合本步而改的测试**，理由写在
+  测试文档字符串里。
+
+### 12.5 打包结果
+
+```
+built   : D:\BiShi\hysys-agent-submission-20261003-222823.zip
+files   : 152
+size    : 1.52 MB compressed, 2.59 MB of content
+verified: zip integrity + 151 SHA256 hashes re-read from the archive
+notes   : 3 entries（都是历史验收目录里被排除的 .hsc）
+```
+
+抽查包内条目：`reactor_agent/report.py`、`reactor_agent/test_report.py`、
+`reactor_agent/test_cli.py`、`docs/tool-acceptance-20261003-105341.json`、
+`docs/AGENT_FIX_NOTES.md`、`Run-Agent-UI.cmd`、`Run-Agent-On-Workstation.cmd`、
+`tool-layer-runs/acceptance-20261003-105341-4467d9c9.zip` **全部在包内**；
+`.env`、`.hsc`、`.pyc`、`.rdp`、`_review/`、`RELEASE_MANIFEST.json`、
+`NATIVE_FLOW_UPDATE.md` **都不在包内**（逐项检查，0 命中）。
+
+**测试数量**：`reactor_agent` 355、`hysys_tools` 184、打包器 17，全部通过。
+
+
 
 
 

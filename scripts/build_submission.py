@@ -43,22 +43,30 @@ INCLUDE_DIRS = ('hysys_tools', 'reactor_agent', 'docs', 'scripts', 'verification
 # Root files copied individually. Kept explicit so a stray file cannot ride along.
 INCLUDE_FILES = (
     'README.md', 'REPORT.md', 'PROJECT_PLAN.md', 'TECH_STACK.md',
-    'requirements.txt', 'baseline_expected.json', 'RELEASE_MANIFEST.json',
+    'requirements.txt', 'baseline_expected.json',
     '.gitignore',
     'Run-Agent-On-Workstation.cmd', 'Run-Offline-Checks.cmd',
     'Run-Remote-Validation.cmd', 'Run-Native-Flow-Validation.cmd', 'Run-Tool-Layer.cmd',
+    'Run-Agent-UI.cmd',
 )
 
-# Acceptance runs worth shipping as evidence. Only the accepted one, by name, so a
+# Acceptance runs worth shipping as evidence. Only the accepted ones, by name, so a
 # half-finished local run can never end up in the submission.
 EVIDENCE_DIRS = ('tool-layer-runs/acceptance-20261002-144131-d442afae',
                  'probe-runs/equilibrium-20261003-101446',
                  'tool-layer-runs/native-flow-20261003-091907-5550b747')
 
+# Evidence that arrived as a ZIP rather than an extracted directory. The local
+# machine never ran the remote acceptance, so the only copy of that run's evidence is
+# the archive it produced; shipping it beats dropping the evidence chain.
+EVIDENCE_ZIPS = ('tool-layer-runs/acceptance-20261003-105341-4467d9c9.zip',)
+
 # Never ship these, whatever the allowlist says.
 EXCLUDE_DIRS = {'__pycache__', '.pytest_cache', '.mypy_cache', '_archive', 'packages'}
 EXCLUDE_SUFFIXES = {'.pyc', '.pyo', '.hsc', '.hscz', '.rdp', '.zip', '.log'}
-EXCLUDE_NAMES = {'cand-zhongshuai.rdp'}
+# `.env` can hold a real key, and it is not in the allowlist anyway; naming it here
+# means the exclusion survives someone adding the root directory wholesale later.
+EXCLUDE_NAMES = {'cand-zhongshuai.rdp', '.env'}
 
 # A submission containing a live credential is worse than no submission.
 SECRET_PATTERNS = (
@@ -120,6 +128,19 @@ def collect() -> tuple[dict[str, bytes], list[str]]:
         for path in sorted(base.rglob('*')):
             if path.is_file():
                 add(path, str(path.relative_to(PROJECT)).replace('\\', '/'))
+
+    for name in EVIDENCE_ZIPS:
+        path = PROJECT / name
+        if not path.is_file():
+            notes.append('missing evidence: %s' % name)
+            continue
+        # Read directly: `add` excludes `.zip` on purpose (an archive in the tree is
+        # usually a stray build artefact), and this one is named evidence on purpose.
+        data = path.read_bytes()
+        if len(data) > MAX_BYTES:
+            notes.append('skipped (%.1f MB): %s' % (len(data) / 1024 / 1024, name))
+            continue
+        contents[name] = data
 
     return contents, notes
 
