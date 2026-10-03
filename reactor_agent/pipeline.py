@@ -31,11 +31,12 @@ from pathlib import Path
 from typing import Any
 
 from hysys_tools import precheck
+from hysys_tools.core import canonical
 
 from .adapters.hysys_cli import ExecutionResult, HysysCliAdapter
 from .adapters.run_store import RunStore
 from .capabilities import combination_status
-from .compiler import CompileError, compile_plan
+from .compiler import CompileError, coal_assumption, compile_plan
 from .extraction import extract_verified, required_kind_for
 from .llm import ChatClient, LlmError
 from .normalize import NormalizationReport, normalize
@@ -44,9 +45,10 @@ from .schemas import (
     ModelingPlan,
     OperatingCase,
     ProcessRequest,
+    Question,
     SelectionDecision,
 )
-from .selection import select_reactor
+from .selection import complete_gibbs_candidates, planned_thermal_mode, select_reactor
 
 # Overall task status. Mirrors what the plan promises to report.
 WAITING_INPUT = 'WAITING_INPUT'
@@ -88,7 +90,8 @@ class AgentRun:
         """Values this agent chose, which must be stated in any report."""
         if self.plan is None:
             return []
-        return [{'field': a.field, 'value': a.value, 'scope': a.scope}
+        return [{'id': a.id, 'field': a.field, 'value': a.value, 'scope': a.scope,
+                 'accepted': a.accepted}
                 for a in self.plan.assumptions if a.source == 'agent_default']
 
     def spec(self, case_id: str | None = None) -> dict[str, Any] | None:
@@ -127,20 +130,68 @@ def build_plan(request: ProcessRequest, decision: SelectionDecision,
                ) -> ModelingPlan:
     """Assemble the plan, keeping questions and assumptions attached to it.
 
-    Thermal mode comes from the operating cases when the user stated an outlet
-    temperature; otherwise the case is adiabatic. Deciding this here, not in the
-    prompt, is what keeps the same request producing the same plan twice.
+    Thermal mode: when the caller states one, that is used. Otherwise it is the mode
+    selection already decided on (`selection.planned_thermal_mode`), so the lookup
+    performed during selection and the spec that is actually compiled can never
+    disagree about whether the case is adiabatic - which is exactly how toluene came
+    to be reported experimental while being run adiabatically.
     """
     defaulted = heat_mode is None
     if heat_mode is None:
-        heat_mode = 'isothermal' if request.operating_cases else 'adiabatic'
+        heat_mode = planned_thermal_mode(request)
     cases = [OperatingCase(case_id=c.case_id, label=c.label)
              for c in request.operating_cases] or [OperatingCase(case_id='single')]
+
+    # A Gibbs reactor can only distribute among the candidates it is given. When the
+    # process is a black box the reaction list does not name them all, so the candidate
+    # set is completed from the elements already present, and the completion is
+    # declared - it is our choice, not something the user wrote.
+    components = list(request.components)
+    if decision.execution_reactor == 'gibbs':
+        components, added = complete_gibbs_candidates(components)
+        if added:
+            report.assumptions.append(Assumption(
+                id='a-gibbs-candidates', field='fluid_package.components',
+                value=added, source='agent_default', accepted=False,
+                scope=('Gibbs 只在给定组分中按自由能最小分配产物；题目未逐一列出，'
+                       '按进料元素补齐候选产物 %s' % '、'.join(added))))
+
     plan = ModelingPlan(request=request, decision=decision,
-                        components=list(request.components),
+                        components=components,
                         thermal_mode=heat_mode, cases=cases)
     plan.questions.extend(report.questions)
     plan.assumptions.extend(report.assumptions)
+
+    solid_carbon = _feed_has_carbon(request)
+    if solid_carbon and decision.execution_reactor == 'gibbs':
+        # The tool layer refuses a plain Gibbs reactor with library Carbon before it
+        # solves, so the saturated-carbon route is what actually runs. It changes what
+        # the outlet means, so it is declared rather than left implicit.
+        plan.assumptions.append(Assumption(
+            id='a-solid-carbon-route', field='reactor.solid_carbon',
+            value='saturation', source='derived', accepted=True,
+            scope=('转化率反应器加仅含气相的 Gibbs 反应器，外层求解使气相碳活度为 1；'
+                   '不使用 HYSYS 库 Carbon 的 Gibbs 数据；未反应碳会出现在'
+                   '名为 LIQUID 的物流中，实为固相')))
+        if not any(canonical(name) == 'oxygen' for name in components):
+            # Not blocking: the temperature is still achievable with external heat,
+            # but the duty then means something different from autothermal gasification.
+            plan.questions.append(Question(
+                id='q-no-oxygen', field='feeds[0].oxygen', blocking=False,
+                question='题目没有给出氧气进料，维持出口温度需要外部供热；'
+                         '报告的热负荷是外供热，不是自热气化。'))
+
+    coal = coal_assumption(request)
+    if coal is not None:
+        plan.assumptions.append(coal)
+
+    if decision.execution_reactor == 'equilibrium':
+        plan.assumptions.append(Assumption(
+            id='a-equilibrium-k', field='reactions', source='derived', accepted=True,
+            scope=('平衡常数由 HYSYS 组分 Gibbs 数据在出口温度上下 150 K 内拟合 '
+                   'ln K = A + B/T + C·ln T；工具层校验拟合残差与出口 Q/K；'
+                   'Q/K 接近 1 不能证明高温区 Gibbs 数据本身准确')))
+
     if defaulted:
         # Choosing the thermal boundary is a modelling decision, and "adiabatic
         # because nobody said otherwise" has a real effect on the duty. A reader who
@@ -152,6 +203,20 @@ def build_plan(request: ProcessRequest, decision: SelectionDecision,
                    if request.operating_cases
                    else '题面未说明热边界，按绝热处理')))
     return plan
+
+
+def _feed_has_carbon(request: ProcessRequest) -> bool:
+    """True when a feed actually contains carbon, which selects the saturation route.
+
+    Judged from the composition, not from the component list: a candidate set may name
+    Carbon as a possible product while the feed is pure gas.
+    """
+    for feed in request.feeds:
+        for source in (feed.fractions, feed.flows):
+            for name, value in source.items():
+                if canonical(name) == 'carbon' and float(value) > 0:
+                    return True
+    return False
 
 
 def precheck_spec(spec: dict[str, Any] | None) -> dict[str, Any]:

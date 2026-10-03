@@ -531,6 +531,188 @@ class CompilerQuestionsReachTheUser(unittest.TestCase):
         self.assertEqual(route_after_plan(state), 'ask')
 
 
+class CompileFailureIsReportedAsFailure(unittest.TestCase):
+    """A failed compilation used to look like a run waiting for input.
+
+    `compiled = plan` left the status at its default WAITING_INPUT while the problem
+    list held the compile error and the question list was empty: the user was told to
+    answer questions that did not exist.
+    """
+
+    def test_a_compile_error_ends_as_failed(self):
+        from unittest import mock
+
+        from reactor_agent.compiler import CompileError
+        with tempfile.TemporaryDirectory() as tmp:
+            graph = build_graph(client_returning(TOLUENE_FACTS), dry_run=True,
+                                run_root=Path(tmp))
+            with mock.patch('reactor_agent.nodes.plan.compile_plan',
+                            side_effect=CompileError('boom')):
+                state = graph.invoke(
+                    initial_state(TEXT, scenario_label='toluene', kind='conversion',
+                                  phase='liquid', feed_basis='mass_fraction'),
+                    config_for('boom'))
+        self.assertEqual(state['status'], 'FAILED')
+        self.assertTrue(any('compilation failed' in p for p in state['problems']),
+                        state['problems'])
+        self.assertFalse(state.get('__interrupt__'))
+
+
+class InterruptCarriesTheDefaultAnswer(unittest.TestCase):
+    """The suggested answer has to reach whoever is asking the question."""
+
+    def test_the_question_dictionary_has_a_default_key(self):
+        graph = build_graph(client_returning(INCOMPLETE_FACTS), dry_run=True)
+        state = graph.invoke(initial_state(TEXT, scenario_label='toluene',
+                                           kind='conversion', phase='liquid',
+                                           feed_basis='mass_fraction'),
+                             config_for('default-key'))
+        questions = state['__interrupt__'][0].value['questions']
+        self.assertTrue(questions)
+        for question in questions:
+            self.assertIn('default', question)
+
+
+class NormalVolumeAnswers(unittest.TestCase):
+    """The Nm3 question, its default, and the one-round route out of it.
+
+    This is the regression test for the loop the plan describes: normalisation asked
+    about the feed's total flow, the compiler asked again about the same field under a
+    different id, and only the first id was routable - so answering never satisfied the
+    compiler's question and the run asked forever.
+    """
+
+    GASIFICATION = dict(CompilerQuestionsReachTheUser.GASIFICATION,
+                        feed_unit='Nm3/h')
+
+    TEXT = ('水煤浆气化：C+H2O → CO+H2，进料煤炭和水，流量80000Nm3/h，压力40bar，'
+            '进料温度40摄氏度，出口1400度，浓度62wt%')
+
+    def _run(self, **resume):
+        from langgraph.types import Command
+        graph = build_graph(client_returning(self.GASIFICATION), dry_run=True)
+        config = config_for('nv')
+        state = initial_state(self.TEXT, scenario_label='g', kind='gibbs',
+                              phase='gas', feed_basis='mass_fraction')
+        first = graph.invoke(state, config)
+        if resume:
+            return graph.invoke(Command(resume=resume), config)
+        return first
+
+    # ------------------------------------------------------------ the parsing
+    def _basis_for(self, answer):
+        from reactor_agent.nodes.answers import apply_answers
+        merged = apply_answers(dict(self.GASIFICATION),
+                               {'q-volumetric-flow': answer})
+        return merged.get('normal_volume_basis'), merged
+
+    def test_the_default_sentence_is_understood(self):
+        basis, merged = self._basis_for('总进料，0°C/101.325 kPa')
+        self.assertEqual(basis['standard_temperature_C'], 0.0)
+        self.assertEqual(basis['standard_pressure_kPa'], 101.325)
+
+    def test_the_word_default_is_enough(self):
+        basis, _ = self._basis_for('默认')
+        self.assertEqual(basis['standard_temperature_C'], 0.0)
+        self.assertEqual(basis['standard_pressure_kPa'], 101.325)
+
+    def test_a_standard_temperature_can_be_changed(self):
+        for answer in ('20°C', '20℃'):
+            with self.subTest(answer=answer):
+                basis, _ = self._basis_for(answer)
+                self.assertEqual(basis['standard_temperature_C'], 20.0)
+                self.assertEqual(basis['standard_pressure_kPa'], 101.325)
+
+    def test_a_temperature_and_a_pressure_together(self):
+        basis, _ = self._basis_for('15 C, 1 atm')
+        self.assertEqual(basis['standard_temperature_C'], 15.0)
+        self.assertAlmostEqual(basis['standard_pressure_kPa'], 101.325, places=3)
+
+    def test_kelvin_is_converted(self):
+        basis, _ = self._basis_for('273.15 K')
+        self.assertAlmostEqual(basis['standard_temperature_C'], 0.0, places=6)
+
+    def test_a_normal_volume_total_is_kept(self):
+        basis, merged = self._basis_for('80000 Nm3/h')
+        self.assertEqual(merged['feed_total'], 80000.0)
+        self.assertEqual(merged['feed_unit'], 'Nm3/h')
+        self.assertEqual(basis['standard_pressure_kPa'], 101.325)
+
+    def test_a_mass_flow_replaces_the_volume(self):
+        basis, merged = self._basis_for('49086 kg/h')
+        self.assertEqual(merged['feed_total'], 49086.0)
+        self.assertEqual(merged['feed_unit'], 'kg/h')
+        self.assertIsNone(basis)
+
+    def test_a_refusal_changes_nothing(self):
+        for answer in ('不是', 'no idea', ''):
+            with self.subTest(answer=answer):
+                from reactor_agent.nodes.answers import apply_answers
+                notes = []
+                merged = apply_answers(dict(self.GASIFICATION),
+                                       {'q-volumetric-flow': answer}, note=notes)
+                self.assertNotIn('normal_volume_basis', merged)
+                self.assertTrue(notes)
+
+    def test_another_stream_is_refused_with_an_explanation(self):
+        from reactor_agent.nodes.answers import apply_answers
+        notes = []
+        merged = apply_answers(dict(self.GASIFICATION),
+                               {'q-volumetric-flow': '指出口合成气'}, note=notes)
+        self.assertNotIn('normal_volume_basis', merged)
+        self.assertTrue(any('其他物流' in n for n in notes), notes)
+
+    def test_a_compiler_question_id_routes_like_the_normaliser_one(self):
+        from reactor_agent.nodes.answers import apply_answers
+        first = apply_answers(dict(self.GASIFICATION),
+                              {'q-volumetric-flow': '默认'})
+        second = apply_answers(dict(self.GASIFICATION),
+                               {'q-flow-basis-0': '默认'})
+        self.assertEqual(first.get('normal_volume_basis'),
+                         second.get('normal_volume_basis'))
+
+    def test_a_compiler_temperature_question_writes_the_field(self):
+        from reactor_agent.nodes.answers import apply_answers
+        merged = apply_answers(dict(self.GASIFICATION), {'q-temp-missing-0': '40 C'})
+        self.assertEqual(merged['feed_temperature'], 40.0)
+
+    # ------------------------------------------------------------- the routing
+    def test_the_first_pause_asks_both_questions_with_defaults(self):
+        state = self._run()
+        questions = state['__interrupt__'][0].value['questions']
+        by_id = {q['id']: q for q in questions}
+        self.assertIn('q-volumetric-flow', by_id)
+        self.assertIn('q-coal-definition', by_id)
+        self.assertEqual(by_id['q-volumetric-flow']['default'],
+                         '总进料，0°C/101.325 kPa')
+        self.assertEqual(by_id['q-coal-definition']['default'], '按纯碳处理')
+        self.assertEqual(
+            [q['field'] for q in questions].count('feeds[0].total_flow_unit'), 1)
+
+    def test_one_round_of_defaults_finishes_the_run(self):
+        first = self._run()
+        questions = first['__interrupt__'][0].value['questions']
+        defaults = {q['id']: q['default'] for q in questions}
+        state = self._run(**defaults)
+        self.assertFalse(state.get('__interrupt__'))
+        self.assertEqual(state['status'], 'READY', state.get('problems'))
+        spec = state['cases'][0]['spec']
+        self.assertEqual(spec['feeds'][0]['flow_input'], 'normal_volume')
+        self.assertEqual(spec['reactor']['solid_carbon'], 'saturation')
+
+    def test_a_negative_answer_does_not_confirm_the_coal(self):
+        from reactor_agent.nodes.answers import confirmation_text
+        for bad in ('不可以', '不行', 'no'):
+            with self.subTest(bad=bad):
+                self.assertEqual(confirmation_text({'q-coal-definition': bad},
+                                                   self.TEXT), self.TEXT)
+
+    def test_the_default_text_does_confirm_it(self):
+        from reactor_agent.nodes.answers import confirmation_text
+        text = confirmation_text({'q-coal-definition': '按纯碳处理'}, self.TEXT)
+        self.assertIn('纯固体碳', text)
+
+
 class StateSummary(unittest.TestCase):
 
     def test_the_summary_is_json_safe(self):

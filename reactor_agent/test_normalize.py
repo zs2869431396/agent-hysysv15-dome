@@ -550,8 +550,62 @@ class TheFlowIsAnchoredOnTheCarbonReactant(unittest.TestCase):
         self.assertIn('Methane', assumption.scope)
 
 
-class TheXyleneSplitIsDeclared(unittest.TestCase):
+class TheGibbsPlanIsCompleted(unittest.TestCase):
+    """A Gibbs reactor only distributes among the candidates it is given.
 
+    The accepted gasification spec carries CO2 and Methane as well as the four species
+    the request names, so a request that lists only those four has to be completed -
+    and the completion declared, because nothing in the request asked for it.
+    """
+
+    THIN_FACTS = dict(GASIFICATION_FACTS,
+                      species=['碳', '水', '一氧化碳', '氢气'])
+
+    def _plan(self, facts=None):
+        from reactor_agent.pipeline import build_plan
+        from reactor_agent.selection import select_reactor
+        request, report = normalize(facts or GASIFICATION_FACTS, 'text',
+                                    scenario_label='g')
+        decision = select_reactor(request, solid_phase=request.has_solid_reactant)
+        return request, build_plan(request, decision, report)
+
+    def test_the_candidates_are_completed(self):
+        _, plan = self._plan(self.THIN_FACTS)
+        self.assertIn('CO2', plan.components)
+        self.assertIn('Methane', plan.components)
+
+    def test_the_completion_is_an_assumption(self):
+        _, plan = self._plan(self.THIN_FACTS)
+        assumption = next(a for a in plan.assumptions
+                          if a.id == 'a-gibbs-candidates')
+        self.assertEqual(assumption.source, 'agent_default')
+        self.assertEqual(assumption.value, ['CO2', 'Methane'])
+        self.assertFalse(assumption.accepted)
+
+    def test_a_complete_candidate_list_is_not_touched(self):
+        _, plan = self._plan()
+        self.assertNotIn('a-gibbs-candidates',
+                         [a.id for a in plan.assumptions])
+
+    def test_the_saturation_route_is_declared(self):
+        _, plan = self._plan()
+        assumption = next(a for a in plan.assumptions
+                          if a.id == 'a-solid-carbon-route')
+        self.assertEqual(assumption.value, 'saturation')
+        self.assertEqual(assumption.source, 'derived')
+        self.assertTrue(assumption.accepted)
+        self.assertIn('LIQUID', assumption.scope)
+
+    def test_the_missing_oxygen_is_noted_without_blocking(self):
+        """External heat is a different duty from autothermal gasification."""
+        _, plan = self._plan()
+        question = next(q for q in plan.questions if q.id == 'q-no-oxygen')
+        self.assertFalse(question.blocking)
+        self.assertIn('外部供热', question.question)
+        self.assertFalse(any(q.id == 'q-no-oxygen' for q in plan.blocking_questions()))
+
+
+class TheXyleneSplitIsDeclared(unittest.TestCase):
     def test_an_equal_split_written_by_the_model_is_recorded(self):
         """The smoke record shows the model splitting the isomers itself."""
         _, report = normalize(TOLUENE_FACTS, TOLUENE_TEXT, scenario_label='t')

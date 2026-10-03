@@ -44,7 +44,11 @@ def question_to_dict(question: Question) -> dict[str, Any]:
     """A question in the JSON-safe form the state carries."""
     return {'id': question.id, 'field': question.field,
             'question': question.question, 'reason': question.reason,
-            'blocking': question.blocking}
+            'blocking': question.blocking,
+            # The suggested answer travels with the question so a client can offer it
+            # as a default. It is only a suggestion: nothing applies it until the user
+            # confirms, which is what keeps a default from becoming an assumption.
+            'default': question.default}
 
 
 def still_missing(facts: dict[str, Any], kind: str) -> list[str]:
@@ -126,8 +130,12 @@ def make_plan_node():
         try:
             compiled = compile_plan(plan)
         except CompileError as exc:
+            # A failed compilation has to end as FAILED. Assigning `compiled = plan`
+            # left the status at its default WAITING_INPUT while the question list was
+            # empty, so the user was told to answer questions that did not exist.
             problems.append('compilation failed: %s' % exc)
             compiled = plan
+            compiled.status = FAILED
 
         # Collected AFTER compiling: the compiler contributes its own blocking
         # questions, and they live in `plan.questions` alongside normalisation's.
@@ -149,8 +157,10 @@ def make_plan_node():
         return {
             'blocking': blocking,
             'open_questions': open_questions,
-            'assumptions': [{'field': a.field, 'value': a.value, 'scope': a.scope,
-                             'source': a.source} for a in plan.assumptions],
+            'assumptions': [{'id': a.id, 'field': a.field, 'value': a.value,
+                             'scope': a.scope, 'source': a.source,
+                             'accepted': a.accepted}
+                            for a in plan.assumptions],
             'applied': list(report.applied),
             'notes': list(report.notes),
             'components': list(request.components),

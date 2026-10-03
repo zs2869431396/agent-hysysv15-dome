@@ -297,4 +297,80 @@ Gibbs 对照没有被删掉：改为新测试 `test_gibbs_comparison_carries_no_
 
 **测试数量**：`reactor_agent` 277 → **288**（+11），全部通过；`hysys_tools` 184 仍全部通过。
 
+---
+
+## 步骤 6：`pipeline.build_plan` 与 `nodes/plan.py`
+## 步骤 7：`reactor_agent/nodes/answers.py` 回答路由
+
+（6 与 7 同属"追问能答掉、一轮跑通"这条链路：只加 6 会让气化仍然答不掉，只加 7 没有
+`a-solid-carbon-route`、`q-no-oxygen` 与补齐的候选产物可路由。仍然是一步一提交的粒度。）
+
+### 步骤 6 的改动
+
+- **6.1 `build_plan`**
+  1. `heat_mode` 为 None 时改用 `selection.planned_thermal_mode(request)`
+     （原先就地写 `'isothermal' if request.operating_cases else 'adiabatic'`，
+     与选型各算一次，正是甲苯"选型 experimental、执行绝热"的来源）。`a-thermal-mode`
+     的逻辑与文字不变（测试检查"等温"）。
+  2. `decision.execution_reactor == 'gibbs'` 时调用 `complete_gibbs_candidates`，
+     有新增就追加 `Assumption(id='a-gibbs-candidates', source='agent_default',
+     accepted=False)`，`scope` 里按实际新增组分写（`%s` 拼接，不是写死）。
+  3. 反应器为 gibbs 且进料含碳时（新增私有 `_feed_has_carbon`，按 `hysys_tools.core.canonical`
+     判断进料里是否真有碳，而不是看组分表里有没有 Carbon）追加
+     `Assumption(id='a-solid-carbon-route', value='saturation', source='derived',
+     accepted=True)`，`scope` 写明"转化率反应器加仅含气相的 Gibbs 反应器、外层求解使气相
+     碳活度为 1、不使用库 Carbon 的 Gibbs 数据、未反应碳出现在名为 LIQUID 的物流中"；
+     进料里没有 Oxygen 时追加**非阻塞**问题 `q-no-oxygen`。
+  4. 调用 `compiler.coal_assumption(request)`，不为 None 就追加。
+  5. 反应器为 equilibrium 时追加 `Assumption(id='a-equilibrium-k', source='derived',
+     accepted=True)`，`scope` 写明 ln K 拟合式、工具层校验残差与出口 Q/K、
+     以及"Q/K 接近 1 不能证明高温区 Gibbs 数据本身准确"。
+  6. `ModelingPlan(components=补齐后的列表, ...)`。
+- **6.2 `nodes/plan.py`**：`CompileError` 分支在记录 `problems` 之后把状态设为 `FAILED`
+  （原先 `compiled = plan`，状态停在默认 `WAITING_INPUT` 而问题列表为空）；
+  `question_to_dict` 增加 `'default'`；写进 state 的 `assumptions` 每项增加 `'id'` 与
+  `'accepted'`。顺带把 `AgentRun.assumptions_we_made` 也补上 `id`/`accepted`，
+  供步骤 8 的报告区分"我方默认"与"用户确认"。
+- **6.3 `run_pipeline`**：未改（它本来就在 `CompileError` 时返回 FAILED）。
+
+### 步骤 7 的改动
+
+- **7.1 新增 `parse_normal_volume_answer(answer)`**，返回 `normal_volume` / `flow` /
+  `unreadable` 三种之一，按计划的 10 条顺序判断：dict 输入、质量或摩尔流量单位、
+  Nm³ 总量、否定、其他物流、温度（含 K 换算）、压力（用 `hysys_tools.core.to_kpa`）、
+  只给一项时另一项取默认、默认关键词、其余（含空串）为 unreadable。
+  空回答**不**当默认：采用默认由 CLI 显式填入默认文字完成（步骤 10）。
+  另新增共用谓词 `is_negative_text`（煤确认识别否定也用它）。
+- **7.2 `apply_answers` 新路由**：`q-volumetric-flow` 与 `^q-flow-basis-\d+$` 都走 7.1
+  ——`normal_volume` 写 `merged['normal_volume_basis']`，有 `total` 时同时写
+  `feed_total`/`feed_unit='Nm3/h'`；`flow` 写 `feed_total`/`feed_unit` 并删除
+  `normal_volume_basis`；`unreadable` 只追加 note，facts 不变。
+  从 `_DIRECT_IDS` 删掉 `q-volumetric-flow`。新增编译器问题路由
+  `^q-(flow-missing|temp-missing|press-missing)-\d+$`；`q-pressure-varies` 在
+  `_DIRECT_IDS` 中已存在，未改。未知 id 仍然什么都不写
+  （`test_an_unknown_question_id_writes_nothing` 继续通过）。
+- **7.3 煤确认先判否定**：`confirmation_text` 先用 `is_negative_text` 判断，命中就原样
+  返回；"不可以"不再因为含"可以"被当成同意。默认文字"按纯碳处理"仍属肯定。
+
+### 新增测试
+
+- `test_normalize.py::TheGibbsPlanIsCompleted`（5 项）：候选产物补齐、补齐记为假设
+  （`value == ['CO2','Methane']`）、候选本来就齐时不记、饱和碳路线假设（含 LIQUID）、
+  `q-no-oxygen` 非阻塞且不进 `blocking_questions()`。
+- `test_graph.py::CompileFailureIsReportedAsFailure`（1 项）：`mock.patch`
+  `reactor_agent.nodes.plan.compile_plan` 抛 `CompileError`，最终 `status == 'FAILED'`、
+  `problems` 含 `compilation failed`、没有 `__interrupt__`。
+- `test_graph.py::InterruptCarriesTheDefaultAnswer`（1 项）：暂停时 interrupt 里的每个
+  问题字典都带 `default` 键。
+- `test_graph.py::NormalVolumeAnswers`（16 项）：计划表格里那 9 种回答逐条解析、
+  编译器 id 与 normalize id 结果相同、`q-temp-missing-0='40 C'` 写入
+  `feed_temperature`、否定与"指出口合成气"不改 facts、第一次暂停同时出现
+  `q-volumetric-flow` 与 `q-coal-definition` 且带默认值、同一字段只有一个问题、
+  **用两个默认答案恢复一次后没有 `__interrupt__` 且 `status == 'READY'`、
+  spec 里 `flow_input == 'normal_volume'` 与 `solid_carbon == 'saturation'`**
+  （这就是死循环的回归测试）。
+
+**测试数量**：`reactor_agent` 288 → **310**（+22），全部通过；`hysys_tools` 184 仍全部通过。
+
+
 
