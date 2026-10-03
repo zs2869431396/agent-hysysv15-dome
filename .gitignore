@@ -55,3 +55,7 @@ desktop.ini
 # ---- 检查点汇报素材（不进仓库）----
 _review/
 
+# 两份「远程未运行」的中途快照：不是验收证据，且其中一份写着气化 BLOCKED，
+# 那正是已被 20261003-105341-4467d9c9 取代的旧结论。只保留验收那一份。
+tool-layer-runs/acceptance-20261003-115932-35c8e349.zip
+tool-layer-runs/acceptance-20261003-184441-f66d5953.zip
