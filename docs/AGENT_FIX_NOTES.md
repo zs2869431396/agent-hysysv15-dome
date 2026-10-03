@@ -436,6 +436,41 @@ Gibbs 对照没有被删掉：改为新测试 `test_gibbs_comparison_carries_no_
 
 **测试数量**：`reactor_agent` 310 → **329**（+19），全部通过；`hysys_tools` 184 仍全部通过。
 
+---
+
+## 步骤 9：`reactor_agent/extraction.py` 方程式识别
+
+### 改动
+
+- 删除旧的 `_NUMERIC_EQUATION = re.compile(r'\d\s*[A-Z][a-z]?')`。它会命中 `H2O` 里的
+  `2O`、`2.5MPa` 里的 `5M`、`80000Nm3/h` 里的 `0N`，于是几乎任何请求都被当成"用户写了
+  方程式"。
+- 新增 `ELEMENTS`（元素集合）、`_SUBSCRIPT_DIGITS`、`_FORMULA`/`_TERM`/`_ARROWS`/
+  `_SIDE`/`_WRITTEN_EQUATION` 与 `_TERM_RE`，以及三个函数：
+  - `_elements_of(formula)`：把化学式拆成元素符号，要求"拆出的 token 拼回原文完全相等"
+    且每个符号都在 `ELEMENTS` 里。`Nm3` 会拆成 N+m3，拼回是 `Nm3` 相等，但 `m` 不是元素
+    （`_SYMBOL` 要求大写开头），所以被拒；`MPa` 同理。
+  - `_split_side(side)`：按 `+` 拆项，每项解析"可选系数 + 化学式"。
+  - `written_equations(text)`：先把下标数字（₀…₉）换成普通数字，再用一个正则匹配
+    "若干项 + 箭头 + 若干项"，逐项校验，任一项不合格就丢弃整条匹配；返回
+    `{化学式: 带符号系数}`，左侧为负、右侧为正，没写系数的按 1。
+- `states_numeric_equation(text)` 改为 `bool(written_equations(text))`；函数名保留，
+  文档字符串写明它现在的含义是"写出了方程式"。
+- `reaction_grounding_failures`：没有写出的方程式时返回 `[]`（与以前一致）；有方程式时
+  "原文给出的系数"**只取方程式各项系数的绝对值**，不再取原文中出现的所有数字。
+  模型系数绝对值 ≤ 1 照旧放过，> 1 必须与其中某个系数相等（容差沿用 `tolerance`）。
+- `reaction_is_derived` 逻辑不变（它调用的 `states_numeric_equation` 自动用上新规则）。
+
+### 新增测试（`test_extraction.py::WrittenEquationsAreTheOnlyEvidence`，8 项）
+
+计划表格里的 6 条逐条覆盖（含下标写法 `2C₇H₈ → C₆H₆ + C₈H₁₀`、无系数的四项、
+`=` 作箭头、三种反例），另加两条：重整原文（无方程式）配模型的 `H2: 3` 返回 `[]` 且
+`reaction_is_derived` 为 True；甲苯原文配模型的 `苯: 3` 返回一条失败。再有一条确认
+"方程式自己写的系数可以支撑模型系数"。
+
+**测试数量**：`reactor_agent` 329 → **337**（+8），全部通过；`hysys_tools` 184 仍全部通过。
+
+
 
 
 

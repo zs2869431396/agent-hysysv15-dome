@@ -21,6 +21,10 @@ from reactor_agent.extraction import (
     extract,
     extract_verified,
     grounding_failures,
+    reaction_grounding_failures,
+    reaction_is_derived,
+    states_numeric_equation,
+    written_equations,
 )
 from reactor_agent.llm import ChatClient, LlmConfig
 
@@ -50,6 +54,66 @@ def fake_client(bodies):
         return queue.pop(0)
 
     return ChatClient(config, transport=transport, sleeper=lambda _s: None)
+
+
+class WrittenEquationsAreTheOnlyEvidence(unittest.TestCase):
+    """Only a formula on both sides of an arrow counts as a written equation.
+
+    The old test was `\\d\\s*[A-Z][a-z]?`, which matched the `2O` in `H2O`, the `5M` in
+    `2.5MPa` and the `0N` in `80000Nm3/h`. Nearly every request therefore looked like
+    one where the user had written coefficients, and the reforming request's
+    element-balanced 3H2 was reported as an unsupported coefficient - a blocking
+    question about a number the model had derived correctly.
+    """
+
+    def test_a_formula_equation_is_read_with_its_coefficients(self):
+        self.assertEqual(written_equations('甲苯 2C₇H₈ → C₆H₆ + C₈H₁₀'),
+                         [{'C7H8': -2.0, 'C6H6': 1.0, 'C8H10': 1.0}])
+
+    def test_implicit_coefficients_count_as_one(self):
+        equations = written_equations('主要反应：C+H2O → CO+H2')
+        self.assertEqual(len(equations), 1)
+        self.assertEqual(sorted(abs(v) for v in equations[0].values()),
+                         [1.0, 1.0, 1.0, 1.0])
+
+    def test_an_equals_sign_is_an_arrow(self):
+        self.assertEqual(len(written_equations('C + H2O = CO + H2')), 1)
+
+    def test_a_ratio_and_units_are_not_an_equation(self):
+        for text in ('进料是甲烷和水蒸气（摩尔比 1:2.7），压力 13.5 bar，H2O',
+                     '流量80000Nm3/h，压力2.5MPa',
+                     'Kp=2.3，T=380'):
+            with self.subTest(text=text):
+                self.assertEqual(written_equations(text), [])
+                self.assertFalse(states_numeric_equation(text))
+
+    def test_a_written_equation_is_detected(self):
+        self.assertTrue(states_numeric_equation('C+H2O → CO+H2'))
+
+    # ------------------------------------------------------- coefficient checks
+    def test_a_derived_coefficient_is_not_flagged_when_no_equation_was_written(self):
+        """The reforming defect: 3H2 came from the element balance, not from a claim."""
+        reactions = [{'name': 'SMR', 'species': [
+            {'name': 'H2', 'coefficient': 3},
+            {'name': 'CO', 'coefficient': 1}]}]
+        self.assertEqual(
+            reaction_grounding_failures(reactions, '甲烷和水蒸气反应生成一氧化碳和氢气'),
+            [])
+        self.assertTrue(reaction_is_derived(reactions[0],
+                                            '甲烷和水蒸气反应生成一氧化碳和氢气'))
+
+    def test_a_coefficient_with_no_equation_to_support_it_is_flagged(self):
+        reactions = [{'name': 'D', 'species': [{'name': '苯', 'coefficient': 3}]}]
+        self.assertEqual(
+            reaction_grounding_failures(reactions, '甲苯歧化 2C₇H₈ → C₆H₆ + C₈H₁₀'),
+            ['reactions[D].苯'])
+        self.assertFalse(reaction_is_derived(reactions[0],
+                                             '甲苯歧化 2C₇H₈ → C₆H₆ + C₈H₁₀'))
+
+    def test_the_equations_own_coefficients_justify_a_model_coefficient(self):
+        reactions = [{'name': 'D', 'species': [{'name': 'C8H10', 'coefficient': 2}]}]
+        self.assertEqual(
+            reaction_grounding_failures(reactions, '甲苯 2C₇H₈ → C₆H₆ + 2C₈H₁₀'), [])
 
 
 class Grounding(unittest.TestCase):

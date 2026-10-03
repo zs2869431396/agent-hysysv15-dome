@@ -457,16 +457,99 @@ def grounding_failures(facts: dict[str, Any], source_text: str,
     return failures
 
 
-# A digit immediately followed by an element-like symbol: "2C7H8", "3H2". This is what
-# a written equation looks like, and it is a far better signal than "does any number in
-# the reaction happen to appear in the text" - which failed exactly when the model got
-# a coefficient wrong, i.e. in the case the check exists for.
-_NUMERIC_EQUATION = re.compile(r'\d\s*[A-Z][a-z]?')
+# Subscript digits, so a formula copied from a document ("C₇H₈") matches a typed one.
+_SUBSCRIPT_DIGITS = str.maketrans('₀₁₂₃₄₅₆₇₈₉', '0123456789')
+
+# The elements a written formula may contain. Deliberately generous but finite: the
+# point is to reject things that merely LOOK like a formula. `Nm3` (Nm is not an
+# element), `MPa` (M is not) and `5M` all fail this test, which is exactly what the
+# earlier regex `\d\s*[A-Z][a-z]?` got wrong - it matched the `2O` in `H2O`, the `5M` in
+# `2.5MPa` and the `0N` in `80000Nm3/h`, so nearly every request looked like a written
+# equation.
+ELEMENTS = frozenset((
+    'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', 'Na', 'Mg', 'Al', 'Si',
+    'P', 'S', 'Cl', 'Ar', 'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', 'Co', 'Ni',
+    'Cu', 'Zn', 'Ga', 'Ge', 'As', 'Se', 'Br', 'Kr', 'Rb', 'Sr', 'Y', 'Zr', 'Nb',
+    'Mo', 'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn', 'Sb', 'Te', 'I', 'Xe',
+    'Cs', 'Ba', 'La', 'Ce', 'Pt', 'Au', 'Hg', 'Pb', 'Bi',
+))
+
+_SYMBOL = r'[A-Z][a-z]?'
+_FORMULA = r'(?:%s\d*)+' % _SYMBOL
+_TERM = r'(?:(\d+(?:\.\d+)?)\s*)?(%s)' % _FORMULA
+# Subscripts '=' and ':' repeat a group in Python's re, so every group inside the
+# arrows below is non-capturing.
+_ARROWS = r'(?:<=>|<->|⇌|⇄|↔|⟶|→|->|=>|=)'
+_SIDE = r'\s*%s(?:\s*\+\s*%s)*\s*' % (_TERM, _TERM)
+_WRITTEN_EQUATION = re.compile(r'%s%s%s' % (_SIDE, _ARROWS, _SIDE))
+
+# The parser is applied to each side on its own; this finds one term at a time.
+_TERM_RE = re.compile(r'^\s*(\d+(?:\.\d+)?)?\s*(%s)\s*$' % _FORMULA)
+
+
+def _elements_of(formula: str) -> list[str] | None:
+    """Element symbols in a formula, or None if it is not a formula at all."""
+    tokens = re.findall(r'%s\d*' % _SYMBOL, formula)
+    # The tokens must account for the whole string, and every symbol must be an
+    # element. Otherwise "Nm3" parses as N + m3 and would be accepted.
+    if ''.join(tokens) != formula or not tokens:
+        return None
+    symbols = [re.match(_SYMBOL, token).group(0) for token in tokens]
+    if any(symbol not in ELEMENTS for symbol in symbols):
+        return None
+    return symbols
+
+
+def _split_side(side: str) -> list[tuple[float, str]] | None:
+    """The coefficient and formula of every term on one side, or None."""
+    terms: list[tuple[float, str]] = []
+    for raw in side.split('+'):
+        match = _TERM_RE.match(raw)
+        if match is None:
+            return None
+        formula = match.group(2)
+        if _elements_of(formula) is None:
+            return None
+        coefficient = float(match.group(1)) if match.group(1) else 1.0
+        terms.append((coefficient, formula))
+    return terms or None
+
+
+def written_equations(text: str) -> list[dict[str, float]]:
+    """Every balanced-looking equation the request actually wrote out.
+
+    Only a construction with chemical formulas on BOTH sides of an arrow counts. The
+    left side's coefficients are negative, the right side's positive; a formula without
+    a written coefficient counts as 1. A match is dropped entirely if any term is not a
+    plausible formula, so a pressure, a unit or a bare number next to an arrow cannot
+    produce one.
+    """
+    folded = str(text or '').translate(_SUBSCRIPT_DIGITS)
+    equations: list[dict[str, float]] = []
+    for match in _WRITTEN_EQUATION.finditer(folded):
+        arrow = re.search(_ARROWS, match.group(0))
+        if arrow is None:
+            continue
+        left = _split_side(match.group(0)[:arrow.start()])
+        right = _split_side(match.group(0)[arrow.end():])
+        if not left or not right:
+            continue
+        equation: dict[str, float] = {}
+        for coefficient, formula in left:
+            equation[formula] = equation.get(formula, 0.0) - coefficient
+        for coefficient, formula in right:
+            equation[formula] = equation.get(formula, 0.0) + coefficient
+        equations.append(equation)
+    return equations
 
 
 def states_numeric_equation(source_text: str) -> bool:
-    """True when the request writes the chemistry with coefficients."""
-    return bool(_NUMERIC_EQUATION.search(source_text or ''))
+    """True when the request writes the chemistry as an actual equation.
+
+    The name is kept for its callers; what it now means is "the text contains an
+    equation", not "the text contains a digit next to a capital letter".
+    """
+    return bool(written_equations(source_text))
 
 
 def reaction_grounding_failures(reactions: list[dict[str, Any]], source_text: str,
@@ -478,8 +561,10 @@ def reaction_grounding_failures(reactions: list[dict[str, Any]], source_text: st
     produced a false alarm on the reforming scenario:
 
       * **The request writes an equation** (`2C7H8 -> C6H6 + C8H10`). Then every
-        coefficient must be traceable to the text, and an invented one is a real
-        fabrication.
+        coefficient must be traceable to the equation's own coefficients, and an
+        invented one is a real fabrication. Only the coefficients of the written
+        equations count - taking every number in the text let a pressure, a flow or a
+        temperature "justify" a coefficient.
       * **The request states the chemistry in words** ("methane and water react to
         give carbon monoxide and hydrogen"). Then the coefficients have to be derived
         from the element balance - there is nothing to copy. Deriving a balanced
@@ -491,10 +576,12 @@ def reaction_grounding_failures(reactions: list[dict[str, Any]], source_text: st
 
     Returns entries like `reactions[0].Toluene`.
     """
-    if not states_numeric_equation(source_text):
+    equations = written_equations(source_text)
+    if not equations:
         return []
     assumed = assumed or set()
-    stated = [value for value, _unit, _quantity in measurements_in(source_text)]
+    stated = [abs(coefficient)
+              for equation in equations for coefficient in equation.values()]
     failures: list[str] = []
     for index, reaction in enumerate(reactions or []):
         label = str(reaction.get('name') or 'RXN-%d' % (index + 1))
