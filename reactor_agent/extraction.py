@@ -29,6 +29,7 @@ can, because it asks a different question - did the user actually say this numbe
 """
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -107,7 +108,9 @@ EXTRACTION_SCHEMA: dict = _obj({
     # never read as "no kinetics" and quietly turned into a Conversion reactor: the
     # selection rules need it, and without these fields the information was dropped
     # before anything could look at it.
-    'rate_law': {'type': 'string'},
+    # `rate_law` accepts null because "the request states no rate law" is the normal
+    # case, and a strict string there would reject a correct reply.
+    'rate_law': {'type': ['string', 'null']},
     'pre_exponential': _num_or_null(),
     'activation_energy': _num_or_null(),
     'activation_energy_unit': {'type': 'string'},
@@ -137,6 +140,178 @@ EXTRACTION_SCHEMA: dict = _obj({
 
 # The prompt encodes two measured lessons: copy figures verbatim (one candidate read
 # "50%" as 0.5), and say so when something was not stated, rather than filling it in.
+# The output contract, written out as text.
+#
+# Until this existed the field names lived ONLY in `response_format.json_schema`. That
+# is fine while the server actually enforces the schema, and silently wrong the moment
+# it does not: an OpenAI-compatible gateway may accept `json_schema` and ignore it, or
+# reject it outright (`HTTP 400`), and the client then falls back to a plain request
+# that carries no schema at all. A real reply captured from that fallback path kept
+# every field the prompt happened to name and invented the rest -
+# `feed: {flow_kg_per_h: 10000}`, `conversion: 50`, `species: [{name, role}]` - because
+# the model had never been told the real names. The prompt has to carry the contract.
+#
+# Including the word "json" is not cosmetic either: DeepSeek answers
+# `HTTP 400 Prompt must contain the word 'json' in some form to use 'response_format'
+# of type 'json_object'` without it.
+_EXAMPLE: dict[str, Any] = {
+    'species': ['甲苯', '苯', '邻二甲苯', '间二甲苯', '对二甲苯'],
+    'feed_composition': [{'name': '甲苯', 'fraction': 100}],
+    'composition_basis': 'mass_fraction',
+    'reactions': [{
+        'name': '歧化',
+        'species': [{'name': '甲苯', 'coefficient': -2},
+                    {'name': '苯', 'coefficient': 1},
+                    {'name': '邻二甲苯', 'coefficient': 1},
+                    {'name': '间二甲苯', 'coefficient': 1},
+                    {'name': '对二甲苯', 'coefficient': 1}],
+        'reversible': False}],
+    'conversion_percent': 50,
+    'conversion_basis': '甲苯',
+    'rate_law': None,
+    'pre_exponential': None,
+    'activation_energy': None,
+    'activation_energy_unit': '',
+    'reaction_order': [],
+    'reactor_volume': None,
+    'reactor_volume_unit': '',
+    'residence_time': None,
+    'residence_time_unit': '',
+    'catalyst_mass': None,
+    'catalyst_mass_unit': '',
+    'phase': 'liquid',
+    'feed_total': 10000,
+    'feed_unit': 'kg/h',
+    'feed_temperature': 380,
+    'feed_temperature_unit': '℃',
+    'feed_pressure': 2.5,
+    'feed_pressure_unit': 'MPa',
+    'case_pressures': [],
+    'case_pressure_unit': '',
+    'outlet_temperatures': [],
+    'outlet_temperature_unit': '',
+    'missing_information': [],
+}
+
+OUTPUT_SPEC = (
+    '\nReturn ONE JSON object with exactly the keys below, all of them, no others.\n'
+    'A value the request does not state is null (arrays: []); never omit a key.\n'
+    'species      array of strings - the substance NAMES\n'
+    'feed_composition  array of {name, fraction} - fraction is the number as written\n'
+    'composition_basis  "mass_fraction" | "mole_ratio" | "pure"\n'
+    'reactions    array of {name, species, reversible}\n'
+    '             species is array of {name, coefficient}, negative = consumed,\n'
+    '             positive = formed. Use `coefficient` and the sign - there is no\n'
+    '             role/type/direction key anywhere in this contract.\n'
+    'conversion_percent  number as written, 50 for 50%\n'
+    'conversion_basis    the reactant the percentage refers to\n'
+    'rate_law / pre_exponential / activation_energy / activation_energy_unit /\n'
+    'reaction_order / reactor_volume / reactor_volume_unit / residence_time /\n'
+    'residence_time_unit / catalyst_mass / catalyst_mass_unit   kinetic data\n'
+    'phase        "gas" | "liquid" | "mixed" | "unknown"\n'
+    'feed_total / feed_unit                              feed flow, as written\n'
+    'feed_temperature / feed_temperature_unit            feed inlet temperature\n'
+    'feed_pressure / feed_pressure_unit                  feed pressure\n'
+    'case_pressures / case_pressure_unit                 per operating case, if given\n'
+    'outlet_temperatures / outlet_temperature_unit       per operating case, if given\n'
+    'missing_information  array of strings - what the request did not say\n'
+    'Do NOT nest the flow, temperature or pressure under a "feed" object (no\n'
+    'feed.flow_kg_per_h, no feed.temperature_C), and do not invent keys such as\n'
+    '"reactor_type", "conversion", "kinetic", "components" or "flows": every value\n'
+    'belongs at the top level, under the names above.\n'
+    'Example of exactly one correct JSON document (values are illustrative):\n'
+    + json.dumps(_EXAMPLE, ensure_ascii=False, indent=2)
+)
+
+
+def allowed_keys(schema: dict | None = None) -> set[str]:
+    """Top-level keys the extractor may return."""
+    return set((schema or EXTRACTION_SCHEMA)['properties'])
+
+
+# ------------------------------------------------------- ③ schema-shape validation
+
+def _type_matches(value: Any, expected: Any) -> bool:
+    """JSON Schema "type" for a value, with int accepted where number is expected."""
+    if isinstance(expected, list):
+        return any(_type_matches(value, item) for item in expected)
+    if expected == 'null':
+        return value is None
+    if expected == 'boolean':
+        return isinstance(value, bool)
+    if expected == 'number':
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if expected == 'integer':
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected == 'string':
+        return isinstance(value, str)
+    if expected == 'array':
+        return isinstance(value, list)
+    if expected == 'object':
+        return isinstance(value, dict)
+    return True
+
+
+def validate_facts(facts: Any, schema: dict | None = None) -> list[str]:
+    """Every way a reply drifts from the contract's SHAPE.
+
+    Deliberately about shape, not completeness. A missing field is already handled by
+    `Extraction.gaps()` against the scenario's own required set, and flagging all 29
+    keys here would reject the small partial replies the tests use while telling the
+    model nothing it cannot see for itself.
+
+    What this catches is the failure that started it: a reply where the model invented
+    its own key names - `feed: {flow_kg_per_h: ...}`, `conversion: 50`,
+    `species: [{name, role}]`. That reply parses as JSON, so `json.loads` is happy, and
+    the loss only shows up much later as blocking questions about fields the user did
+    state. Reporting the drift here makes it one repairable message instead.
+    """
+    schema = schema or EXTRACTION_SCHEMA
+    if not isinstance(facts, dict):
+        return ['the reply is not a JSON object (got %s)' % type(facts).__name__]
+
+    problems: list[str] = []
+    expected = schema['properties']
+    extra = [name for name in facts if name not in expected]
+    if extra:
+        problems.append('unexpected keys: %s' % ', '.join(extra))
+
+    wrong = [name for name, spec in expected.items()
+             if name in facts and not _type_matches(facts[name], spec.get('type'))]
+    if wrong:
+        problems.append('wrong type: %s' % ', '.join(
+            '%s should be %s' % (name, expected[name].get('type')) for name in wrong))
+
+    # The two nested shapes the fallback path got wrong: `species` as objects rather
+    # than names, and a reaction listing its substances under anything but `species`.
+    if isinstance(facts.get('species'), list):
+        if any(not isinstance(name, str) for name in facts['species']):
+            problems.append('species must be an array of plain names, e.g. '
+                            '["甲苯", "苯"] - not objects')
+    reactions = facts.get('reactions')
+    if isinstance(reactions, list):
+        for index, reaction in enumerate(reactions):
+            if not isinstance(reaction, dict):
+                problems.append('reactions[%d] is not an object' % index)
+                continue
+            unknown = [key for key in reaction
+                       if key not in ('name', 'species', 'reversible')]
+            if unknown:
+                problems.append('reactions[%d] has unexpected keys: %s'
+                                % (index, ', '.join(unknown)))
+            for entry in (reaction.get('species') or []):
+                if not isinstance(entry, dict):
+                    problems.append('reactions[%d].species entries must be objects '
+                                    'with name and coefficient' % index)
+                    break
+                if 'role' in entry or 'type' in entry:
+                    problems.append(
+                        'reactions[%d].species uses a role/type key; use a SIGNED '
+                        '`coefficient` instead (negative = consumed)' % index)
+                    break
+    return problems
+
+
 SYSTEM_PROMPT = (
     'You extract chemical-engineering facts from a user request.\n'
     'Copy every number and unit EXACTLY as written. Do not convert units. Do not turn '
@@ -173,7 +348,8 @@ SYSTEM_PROMPT = (
     '-> 1 and 2.7), or to "pure" when the feed is a single substance. Do not '
     'normalise the numbers yourself.\n'
     'List anything the user did NOT state in missing_information. '
-    'Never invent a value.'
+    'Never invent a value.\n'
+    + OUTPUT_SPEC
 )
 
 # Fields whose value is a number the user should have stated.
@@ -661,32 +837,79 @@ def _composition_failures(facts: dict[str, Any],
 
 # ------------------------------------------------------------------ ② LLM call
 
+# How many times a drifted reply is re-asked, across the whole call. One: the repair
+# round carries the validator's message back to the model, and a model that ignores the
+# contract once will usually ignore it again - re-asking per gap-retry round only
+# multiplied the request count while the endpoint was rate-limiting us.
+_REPAIR_LIMIT = 1
+
+REPAIR_PROMPT = (
+    'Your previous reply did not match the required JSON contract.\n'
+    'Fix it and return the complete object again.\n'
+)
+
+
+def _call_once(client: ChatClient, system: str, text: str) -> dict[str, Any]:
+    return client.complete(system, text, schema=EXTRACTION_SCHEMA,
+                           schema_name='Extraction')
+
+
 def extract(client: ChatClient, text: str, kind: str | None = None,
             max_tries: int = 3) -> Extraction:
     """Ask the model for the facts, retrying while required values are missing.
 
-    Two different retries live here and they are not the same thing:
-      * the client retries transient HTTP failures (429/503/401);
+    Three different retries live around here and they are not the same thing:
+      * the client retries transient HTTP failures (see `llm.RETRYABLE_STATUS`);
       * this function retries a *successful* call whose answer is missing a required
         value, because those gaps proved to be random - 83% of calls were complete
-        first time and 100% were complete within three.
+        first time and 100% were complete within three;
+      * a reply that drifts from the JSON contract gets ONE repair round in total,
+        carrying the validator's message back to the model. Before this, a reply with
+        invented key names was accepted and handed downstream, where `normalize`
+        recognised nothing and the run stopped asking about fields the user had stated.
 
-    Pass `kind` to enable the second one; without it the first reply is returned as
-    is. The required set depends on the scenario, so the check cannot be global.
+    The repair budget is deliberately global rather than per attempt: a model that
+    ignores the contract once will usually ignore it again, and re-asking inside every
+    gap-retry round multiplied the request count while the endpoint was already
+    rate-limiting us.
+
+    Pass `kind` to enable the gap retry; without it the first usable reply is returned
+    as is. The required set depends on the scenario, so the check cannot be global.
     """
     extraction = Extraction(model=client.config.model)
     last_error: str | None = None
+    repaired = False
 
     for attempt in range(1, max_tries + 1):
         try:
-            facts = client.complete(SYSTEM_PROMPT, text, schema=EXTRACTION_SCHEMA,
-                                    schema_name='Extraction')
+            facts = _call_once(client, SYSTEM_PROMPT, text)
         except LlmError as exc:
             extraction.attempts = attempt
             extraction.error = str(exc)
             if exc.kind == 'auth':
                 return extraction
             last_error = str(exc)
+            continue
+
+        problems = validate_facts(facts)
+        if problems and not repaired:
+            repaired = True
+            repair_system = SYSTEM_PROMPT + REPAIR_PROMPT + '\n'.join(
+                '- %s' % problem for problem in problems)
+            try:
+                facts = _call_once(client, repair_system, text)
+            except LlmError as exc:
+                extraction.attempts = attempt
+                extraction.error = str(exc)
+                if exc.kind == 'auth':
+                    return extraction
+                last_error = str(exc)
+                continue
+            problems = validate_facts(facts)
+
+        if problems:
+            extraction.attempts = attempt
+            last_error = 'reply did not match the contract: %s' % '; '.join(problems)
             continue
 
         extraction.facts = facts

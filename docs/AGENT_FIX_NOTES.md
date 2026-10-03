@@ -955,6 +955,56 @@ CLI 上确实工作"，只是模型响应是本地 stub：
 **本轮模型调用次数**：DeepSeek 共 4 次（连通性 1、`json_schema` 诊断 1、
 `json_object` 诊断 1、原始回复 1），每次一个请求、不连发。
 
+---
+
+## 用户批准后的修复 A（第 1 条）：让提示词自给自足 + 契约形状校验
+
+**用户给出的根因判断（我接受）**：契约只放在 `response_format.json_schema` 里，
+`SYSTEM_PROMPT` 只提到了一部分字段名（`case_pressures`、`conversion_basis`、
+`composition_basis`、`rate_law`、`phase`、`missing_information`、`reactions.species`
+与 `coefficient`），**完全没提** `feed_total`、`feed_unit`、`feed_temperature`、
+`feed_pressure`、`conversion_percent`，也没说 `species` 是字符串数组。
+对照 `_review/checkpoint-D/live-ds/raw-plain.txt` 的真实回复：**提示词点过名的字段模型全写对了，
+没点名的全部自己编**（`feed.flow_kg_per_h`、`conversion`、`species[{name,role}]`）。
+所以不是模型不听话，是它从来没被告知契约。
+
+### 改动（`reactor_agent/extraction.py`）
+
+1. **新增 `OUTPUT_SPEC`**，拼在 `SYSTEM_PROMPT` 末尾，逐行写出全部 **29 个顶层键名**与
+   类型、`reactions[].species[].coefficient` 的**有符号**语义、以及一句
+   "Do NOT nest ... no feed.flow_kg_per_h, no feed.temperature_C"，并附一份完整的
+   正确 JSON 示例（`_EXAMPLE`，由 `json.dumps` 生成，值只是示例）。**包含 "json" 字样**，
+   顺带解决 DeepSeek `json_object` 那句 400。
+2. **新增 `allowed_keys()` / `validate_facts(facts, schema=None)`**：校验契约**形状**——
+   多余的顶层键、存在的键类型不对、`species` 不是字符串数组、`reactions[].species` 用了
+   `role`/`type` 而不是有符号 `coefficient`、以及 `reactions` 里出现未知键。
+   **刻意不校验"缺字段"**：完整性由 `Extraction.gaps(kind)` 按场景的必需集负责；
+   校验层若要求 29 个键全在，会连带否掉测试用的小回复，而且对模型也没有新信息。
+3. **`extract()` 接入校验 + 最多一次修复重问**：形状不合格时，把**校验器自己的抱怨**
+   （例如 `unexpected keys: reactor_type, feed, conversion`）作为补充 system 提示再问一次。
+   修复预算是**整次调用只允许一次**（`_REPAIR_LIMIT = 1`，不是每轮 gap 重试一次）——
+   这一点是我第一版写错的地方：那版在 429 的情况下会把请求数放大到 6 次，已被
+   `test_the_repair_effort_is_bounded` 固定为"三次尝试 + 一次修复 = 最多 4 次"。
+4. **`rate_law` 的类型由 `string` 放宽为 `['string','null']`**：真实输出与 `_EXAMPLE` 里
+   它常常是 `null`（"题目没有给速率方程"本来就是常态），原来的严格 string 会否掉正确回复。
+   这是修 **schema 过严**，不是放宽契约。
+
+### 新增测试（`test_extraction.py`，11 项）
+
+- `OutputContractIsInThePrompt`（4 项）：**schema 里每个字段名都必须出现在提示词里**；
+  `REQUIRED_BY_KIND` 里每个字段名同样；提示词含 `json` 字样；提示词明确禁止
+  `feed.flow_kg_per_h` / `reactor_type` / `role` 这些被编出来的形状。
+  这一条正是用户说的"契约漂移"回归测试。
+- `ContractDriftIsCaught`（5 项）：**把 `raw-plain.txt` 那份真实回复做成夹具
+  （`FALLBACK_REPLY`，逐字保留）**，断言校验层能拦住它并点名 `reactor_type`/`feed`/
+  `conversion` 与 `species` 形状；合格回复必须通过；`reactions` 里的 `role` 键被拒；
+  缺字段不属于校验层；非对象回复被拒。
+- `OneRepairRound`（2 项）：修复消息必须带上校验器的抱怨（`unexpected keys`、`feed`）；
+  修复次数有上界（4 次请求封顶，且"抱怨只回传一次"）。
+
+**测试数量**：`reactor_agent` 377 → **388**（+11），全部通过；`hysys_tools` 184 仍全部通过。
+
+
 
 
 

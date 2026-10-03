@@ -17,13 +17,16 @@ import unittest
 from reactor_agent.extraction import (
     EXTRACTION_SCHEMA,
     REQUIRED_BY_KIND,
+    SYSTEM_PROMPT,
     Extraction,
+    allowed_keys,
     extract,
     extract_verified,
     grounding_failures,
     reaction_grounding_failures,
     reaction_is_derived,
     states_numeric_equation,
+    validate_facts,
     written_equations,
 )
 from reactor_agent.llm import ChatClient, LlmConfig
@@ -54,6 +57,154 @@ def fake_client(bodies):
         return queue.pop(0)
 
     return ChatClient(config, transport=transport, sleeper=lambda _s: None)
+
+
+def counting_client(bodies):
+    """A fake client that also records every request payload it was sent."""
+    config = LlmConfig(base='https://example.test/v1', key='sk-' + 't' * 30,
+                       min_interval=0)
+    queue = [(200, reply(body)) for body in bodies]
+    seen: list[dict] = []
+
+    def transport(url, payload, headers, timeout):
+        seen.append(payload)
+        return queue.pop(0) if len(queue) > 1 else queue[0]
+
+    return ChatClient(config, transport=transport, sleeper=lambda _s: None), seen
+
+
+# The real reply a fallback (plain-text) request produced on 2026-10-03, kept verbatim
+# because it is the evidence for why the prompt now names every field. The model kept
+# the fields the old prompt happened to name (`case_pressures`, `conversion_basis`,
+# `composition_basis`, `rate_law`, `phase`, `missing_information`, the reactions' signed
+# species) and invented every field it had never been told about.
+FALLBACK_REPLY: dict = {
+    'reactor_type': 'conversion reactor',
+    'reactions': [{'species': [{'name': '甲苯', 'coefficient': -2},
+                               {'name': '苯', 'coefficient': 1},
+                               {'name': '邻二甲苯', 'coefficient': 1}]}],
+    'species': [{'name': '甲苯', 'role': 'reactant'},
+                {'name': '苯', 'role': 'product'},
+                {'name': '邻二甲苯', 'role': 'product'}],
+    'feed': {'flow_kg_per_h': 10000, 'temperature_C': 380, 'pressure_MPa': 2.5},
+    'case_pressures': [],
+    'conversion': 50,
+    'conversion_basis': '甲苯',
+    'feed_composition': [{'name': '甲苯', 'value': 100}],
+    'composition_basis': 'pure',
+    'rate_law': None,
+    'kinetic': None,
+    'phase': 'unknown',
+    'missing_information': ['...'],
+}
+
+
+class OutputContractIsInThePrompt(unittest.TestCase):
+    """The contract must travel in the prompt, not only in `response_format`.
+
+    This is the regression test for the defect that made every real-model run stop on
+    questions about facts the user had stated. `json_schema` is an OpenAI extension: a
+    gateway may accept it and ignore it, or reject it outright, and then the client
+    falls back to a request that carries no schema at all. With the field names living
+    only in `response_format`, that fallback asked the model to guess - and it guessed
+    (`feed.flow_kg_per_h`, `conversion`, `species[{name, role}]`).
+    """
+
+    def test_every_field_in_the_schema_is_named_in_the_prompt(self):
+        for name in allowed_keys():
+            with self.subTest(field=name):
+                self.assertIn(name, SYSTEM_PROMPT,
+                              '%s is in the schema but never named in the prompt, so '
+                              'a plain-text request cannot know it' % name)
+
+    def test_every_required_field_is_named_in_the_prompt(self):
+        for kind, fields in REQUIRED_BY_KIND.items():
+            for name in fields:
+                with self.subTest(kind=kind, field=name):
+                    self.assertIn(name, SYSTEM_PROMPT)
+
+    def test_the_prompt_contains_the_word_json(self):
+        """DeepSeek refuses json_object with 400 unless the prompt says "json"."""
+        self.assertIn('json', SYSTEM_PROMPT.casefold())
+
+    def test_the_prompt_forbids_the_shapes_the_model_invented(self):
+        for forbidden in ('feed.flow_kg_per_h', 'reactor_type', 'role'):
+            with self.subTest(token=forbidden):
+                self.assertIn(forbidden, SYSTEM_PROMPT,
+                              'the prompt should name %r as something not to produce'
+                              % forbidden)
+
+
+class ContractDriftIsCaught(unittest.TestCase):
+    """The validator must stop the reply that broke the real run."""
+
+    def test_the_recorded_fallback_reply_is_rejected(self):
+        problems = validate_facts(FALLBACK_REPLY)
+        joined = '; '.join(problems)
+        self.assertTrue(problems)
+        self.assertIn('reactor_type', joined)
+        self.assertIn('feed', joined)
+        self.assertIn('conversion', joined)
+        self.assertIn('plain names', joined)
+
+    def test_a_conforming_reply_passes(self):
+        conforming = {key: value for key, value in FALLBACK_REPLY.items()
+                      if key not in ('reactor_type', 'feed', 'conversion', 'kinetic')}
+        conforming.update({'species': ['甲苯', '苯', '邻二甲苯'],
+                           'feed_total': 10000, 'feed_unit': 'kg/h',
+                           'feed_temperature': 380, 'feed_pressure': 2.5,
+                           'conversion_percent': 50})
+        self.assertEqual(validate_facts(conforming), [])
+
+    def test_a_role_key_inside_a_reaction_is_rejected(self):
+        facts = {'reactions': [{'species': [
+            {'name': '甲苯', 'coefficient': -2, 'role': 'reactant'}]}]}
+        self.assertTrue(any('role/type' in problem for problem in validate_facts(facts)))
+
+    def test_a_missing_field_is_not_this_layer_s_business(self):
+        """Completeness belongs to `gaps(kind)`; otherwise every small reply fails."""
+        self.assertEqual(validate_facts({'species': []}), [])
+
+    def test_a_non_object_reply_is_rejected(self):
+        self.assertTrue(validate_facts(['not', 'an', 'object']))
+        self.assertTrue(validate_facts('a string'))
+
+
+class OneRepairRound(unittest.TestCase):
+    """A drifted reply gets exactly one follow-up, then the run gives up cleanly."""
+
+    def test_the_repair_message_carries_the_validation_complaint(self):
+        client, seen = counting_client([
+            json.dumps(FALLBACK_REPLY),
+            json.dumps({'feed_total': 10000, 'feed_unit': 'kg/h',
+                        'feed_temperature': 380, 'feed_pressure': 2.5,
+                        'conversion_percent': 50, 'species': ['甲苯', '苯'],
+                        'outlet_temperatures': [], 'case_pressures': [],
+                        'missing_information': []})])
+        result = extract(client, 'text', kind='conversion')
+        self.assertIsNone(result.error)
+        self.assertEqual(result.get('conversion_percent'), 50)
+        self.assertEqual(len(seen), 2, 'one wrong reply plus one repair')
+        repair_system = seen[1]['messages'][0]['content']
+        self.assertIn('unexpected keys', repair_system)
+        self.assertIn('feed', repair_system)
+
+    def test_the_repair_effort_is_bounded(self):
+        """The bad-reply case must not multiply the request count.
+
+        At most `max_tries` gap-retry calls plus ONE repair call: a model that ignores
+        the contract on the first reply is not re-asked inside every retry round, which
+        is what turned a single intake into a burst while the endpoint was already
+        throttling us.
+        """
+        client, seen = counting_client([json.dumps(FALLBACK_REPLY)])
+        result = extract(client, 'text')
+        self.assertIsNotNone(result.error)
+        self.assertEqual(len(seen), 4, 'three tries plus one repair, and no more')
+        complaints = [payload for payload in seen
+                      if 'unexpected keys' in payload['messages'][0]['content']]
+        self.assertEqual(len(complaints), 1,
+                         'the validator complaint may be carried back exactly once')
 
 
 class WrittenEquationsAreTheOnlyEvidence(unittest.TestCase):
