@@ -1,0 +1,2 @@
+# Accepted runtime hashes are for LF bytes. Windows checkouts must preserve them.
+*.py text eol=lf

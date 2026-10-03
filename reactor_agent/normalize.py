@@ -41,7 +41,7 @@ from hysys_tools.core import (
     molar_mass_of,
 )
 
-from .extraction import reaction_grounding_failures, reaction_is_derived
+from .extraction import reaction_grounding_failures, reaction_is_derived, written_equations
 from .schemas import (
     Assumption,
     ConversionConstraint,
@@ -323,7 +323,7 @@ def _feed_composition(facts: dict[str, Any], report: 'NormalizationReport',
 # ------------------------------------------------------------------- reactions
 
 def _stoichiometry(reaction: dict, present: list[str],
-                   report: 'NormalizationReport') -> dict[str, float]:
+                   report: 'NormalizationReport', source_text: str = '') -> dict[str, float]:
     """Signed coefficients from the model's single signed species list.
 
     The model is asked for one list where a negative coefficient is consumed and a
@@ -383,6 +383,7 @@ def _stoichiometry(reaction: dict, present: list[str],
         add(entry.get('name'), coefficient)
 
     cleaned = {name: value for name, value in result.items() if abs(value) > 1e-12}
+    _restore_isomer_group_total(cleaned, source_text, report)
 
     # A reaction needs both directions to mean anything. Reporting this here, as a
     # question, is far more useful than letting the tool layer reject a spec whose
@@ -401,6 +402,53 @@ def _stoichiometry(reaction: dict, present: list[str],
                      % str(reaction.get('name') or ''),
             reason='没有反应物就无法确定反应方向。'))
     return cleaned
+
+
+def _restore_isomer_group_total(stoich: dict[str, float], source_text: str,
+                               report: 'NormalizationReport') -> None:
+    """Split a written group coefficient, never multiply it by the isomer count.
+
+    Only repair equal isomer coefficients when a unique, balanced written equation
+    specifies the group total and agrees with every other species and coefficient.
+    Unknown chemistry, uneven selectivity and other coefficient errors stay subject
+    to the normal pre-check; this is not a general reaction balancer.
+    """
+    isomers = ('o-Xylene', 'm-Xylene', 'p-Xylene')
+    values = [stoich.get(name) for name in isomers]
+    if any(value is None or abs(value) < 1e-12 for value in values):
+        return
+    if max(values) - min(values) > 1e-9:
+        return
+    candidates = []
+    for equation in written_equations(source_text):
+        total = equation.get('C8H10')
+        if total is None or total * values[0] <= 0:
+            continue
+        other = {resolve_species(formula): value for formula, value in equation.items()
+                 if formula != 'C8H10'}
+        if None in other or set(stoich) != set(other) | set(isomers):
+            continue
+        if any(abs(stoich[name] - value) > 1e-9 for name, value in other.items()):
+            continue
+        corrected = dict(other, **{name: total / 3 for name in isomers})
+        net: dict[str, float] = {}
+        for name, coefficient in corrected.items():
+            for element, count in atoms_of(name).items():
+                net[element] = net.get(element, 0) + coefficient * count
+        if all(abs(value) <= 1e-9 for value in net.values()):
+            candidates.append(total)
+    if len(candidates) != 1:
+        return
+    total = candidates[0]
+    if abs(sum(values) - total) <= 1e-9:
+        return
+    for name in isomers:
+        stoich[name] = total / 3
+        if name not in report.expanded_species:
+            report.expanded_species.append(name)
+    report.record('xylene group total restored from the written equation: %g -> %g; '
+                  'o/m/p coefficients %g each (equal split recorded as an assumption)'
+                  % (sum(values), total, total / 3))
 
 
 def _kinetic_data(facts: dict[str, Any], source_text: str) -> 'KineticData | None':
@@ -738,7 +786,7 @@ def normalize(facts: dict[str, Any], source_text: str, *,
     reactions: list[ReactionSpec] = []
     for index, reaction in enumerate(facts.get('reactions') or []):
         # `components` is already resolved, so the expander can check membership.
-        stoich = _stoichiometry(reaction, components, report)
+        stoich = _stoichiometry(reaction, components, report, source_text)
         if not stoich:
             continue
         reactions.append(ReactionSpec(
