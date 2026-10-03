@@ -3,14 +3,23 @@
 No model and no HYSYS. The graph is driven with the same fake client the graph tests
 use, so what is exercised here is the interactive layer: who answers a question, what
 happens when nobody does, and how a second process finds a run that paused.
+
+`AcceptedDefaultsEndToEnd` goes one step further and runs `main()` itself - real
+argument parsing, real run folder, real checkpoint - against a loopback stub that
+answers `/chat/completions` with the extraction JSON. That is the only way to catch a
+wiring bug between `main` and the answering loop, and there was one: `main` chose an
+`answer_fn` but kept using its own single `invoke`, so `--accept-defaults` and the
+terminal prompts silently did nothing.
 """
 from __future__ import annotations
 
 import json
 import os
 import tempfile
+import threading
 import time
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
@@ -25,6 +34,7 @@ from reactor_agent.__main__ import (
     defaults_answerer,
     drive_graph,
     latest_paused_run,
+    main,
     no_input_answerer,
     run_folder,
     terminal_answerer,
@@ -193,6 +203,101 @@ class PausedRunsCanBeFoundAgain(unittest.TestCase):
             # Clearing twice is not an error: a resumed run that finishes normally
             # calls it on a folder that may never have been paused.
             _clear_paused(folder)
+
+
+class AcceptedDefaultsEndToEnd(unittest.TestCase):
+    """`main()` itself, over a loopback stub of the model endpoint.
+
+    The stub answers `/chat/completions` with the extraction JSON, so the real
+    console-script path runs end to end: argument parsing, the graph, the answering
+    loop, the pause marker and the resume lookup. No network, no real key.
+    """
+
+    FACTS = GASIFICATION_FACTS
+    TEXT = GASIFICATION_TEXT
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        body = json.dumps({
+            'choices': [{'message': {'content': json.dumps(self.FACTS)}}],
+            'usage': {}}).encode('utf-8')
+
+        class Stub(BaseHTTPRequestHandler):
+            def log_message(self, *_a):
+                pass
+
+            def do_POST(self):                      # noqa: N802
+                self.rfile.read(int(self.headers.get('Content-Length') or 0))
+                self.send_response(200)
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        self.server = ThreadingHTTPServer(('127.0.0.1', 0), Stub)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+        self.addCleanup(self._tmp.cleanup)
+        host, port = self.server.server_address[:2]
+        self.environment = {
+            'TR_KEY': 'sk-' + 'k' * 30,
+            'TR_BASE': 'http://%s:%d/v1' % (host, port),
+            'TR_MODEL': 'stub-model',
+            'TR_GAP': '0',
+        }
+
+    def _main(self, argv: list[str]) -> int:
+        which = mock.patch('reactor_agent.__main__.PROJECT_ROOT', self.root)
+        env = mock.patch.dict(os.environ, self.environment, clear=False)
+        which.start()
+        env.start()
+        self.addCleanup(which.stop)
+        self.addCleanup(env.stop)
+        return main(argv)
+
+    def _runs(self) -> list[Path]:
+        base = self.root / 'agent-runs'
+        return sorted(base.glob('gasification-*')) if base.is_dir() else []
+
+    def test_accepted_defaults_finish_without_a_terminal(self):
+        code = self._main(['--scenario', 'gasification', '--accept-defaults'])
+        self.assertEqual(code, 0)
+
+    def test_no_input_pauses_and_writes_the_marker(self):
+        code = self._main(['--scenario', 'gasification', '--no-input'])
+        self.assertEqual(code, 3)
+        runs = self._runs()
+        self.assertTrue(runs)
+        marker = runs[0] / PAUSED_MARKER
+        self.assertTrue(marker.is_file())
+        payload = json.loads(marker.read_text(encoding='utf-8'))
+        self.assertEqual(len(payload['questions']), 2)
+        self.assertTrue(payload['thread_id'])
+        self.assertFalse(list(runs[0].glob('spec-*.json')),
+                         'nothing may be compiled while a question is open')
+
+    def test_the_answer_flags_find_the_paused_run_by_themselves(self):
+        """The plan's acceptance line: `--answer` without `--out` resumes it."""
+        self.assertEqual(self._main(['--scenario', 'gasification', '--no-input']), 3)
+        code = self._main(['--scenario', 'gasification',
+                           '--answer', 'q-volumetric-flow=默认',
+                           '--answer', 'q-coal-definition=按纯碳处理'])
+        self.assertEqual(code, 0)
+        # The answering process makes its own (unused) folder, so the count is not
+        # asserted; what matters is that exactly one run ended up with a spec.
+        with_spec = [run for run in self._runs() if list(run.glob('spec-*.json'))]
+        self.assertEqual(len(with_spec), 1, 'the answer must resume, not start anew')
+        resumed = with_spec[0]
+        self.assertFalse((resumed / PAUSED_MARKER).is_file())
+        spec = json.loads(next(resumed.glob('spec-*.json')).read_text(encoding='utf-8'))
+        self.assertEqual(spec['feeds'][0]['flow_input'], 'normal_volume')
+        self.assertEqual(spec['reactor']['solid_carbon'], 'saturation')
+
+    def test_an_answer_without_a_paused_run_reports_that(self):
+        code = self._main(['--scenario', 'gasification',
+                           '--answer', 'q-volumetric-flow=默认'])
+        self.assertEqual(code, 2)
 
 
 class ScenarioTable(unittest.TestCase):

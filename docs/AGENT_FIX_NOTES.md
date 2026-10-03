@@ -817,6 +817,107 @@ Streamlit，也没有改动 `requirements.txt`。
 | `scripts/test_build_submission.py` | 17 |
 | **合计** | **696** |
 
+---
+
+## 真实模型端到端尝试（检查点 D 之后，用户提供凭据）
+
+用户在本步之后提供了模型凭据（`TR_BASE=https://tokenrhythm.studio/v1`、
+`qwen3.7-flash`），要求我自己去打 `/chat/completions` 并跑那几条需要凭据的验收。
+按执行规则 13，**key 只放在执行命令所在进程的环境变量里**：没有写进任何文件、没有打印、
+没有出现在本笔记或任何提交里。
+
+### 结果 1：接口连通，随后被限流
+
+- 第一次 `POST /chat/completions`（不带 `response_format`）：**HTTP 200**，
+  `model=qwen3.7-flash`，`usage prompt=16 completion=31`。
+- 之后所有请求（不带 `response_format`、`json_object`、`json_schema` 三种都一样）持续返回：
+
+  ```
+  HTTP 429  {"code":"RATE_LIMITED","message":"请求过于频繁","traceId":"trace_..."}
+  ```
+
+- 静默 60 秒后仍 429；随后以 2 分钟间隔连续探测，第 1–3 次仍 429，
+  **第 4 次起变成 `401 UNAUTHORIZED / 未认证或登录已过期`**，单独复测同样是 401。
+  也就是说这把 key 在本轮之内从"被限流"走到了"已失效"。
+  第一次 200 之后的所有失败都**不带 `response_format` 也一样**，所以能确定：
+  **不是 schema 不受支持，也不是本项目代码的问题**，而是凭据/服务端状态。
+  探测记录见 `_review/checkpoint-D/live/`。
+
+- 项目自带的限速（`TR_GAP`，默认 2.5 s 一次）不足以规避那个限流。**没有**为了绕过它改动
+  `llm.py`；只把探测间隔放到 2 分钟，避免把限流打得更久。
+
+因此"三个场景的真实模型 dry run"和"网页界面里填 key 跑一次气化"这两条，本轮**仍然没有
+拿到真实模型的结果**（key 已失效）。下面用本地假模型端点把 CLI 的真实代码路径验证完，
+拿到有效 key 后用同一条命令即可复现。
+
+### 结果 2：发现并修复一个真实的 CLI 接线缺陷（步骤 10 的回归）
+
+用本地假模型端点（`_review/checkpoint-D/stub_model.py`，`TR_BASE` 指向
+`http://127.0.0.1:<port>/v1`）驱动**真实的 `python -m reactor_agent`** 时发现：
+
+- `--scenario gasification --no-input` 正常（退出码 3、两个问题、`paused.json` 落盘）；
+- **但 `--scenario gasification --accept-defaults` 也停住了**（退出码 3）。
+
+原因：步骤 10 里 `main()` 虽然按计划选出了 `answer_fn`（`--accept-defaults` →
+`defaults_answerer`，否则按 `isatty()` 选终端或 no-input），**却仍然调用自己手写的单次
+`graph.invoke`**，没有把 `answer_fn` 交给 `drive_graph`。于是：
+
+- `--accept-defaults` 和终端逐题作答**都失效**（只在 `test_cli.py` 直接调用
+  `drive_graph` 的测试里"看起来是对的"——这正是"测试通过但真实入口坏掉"的典型）；
+- `--answer` 的自动定位路径同样走不到作答循环。
+
+**修复**：把 `main()` 的两处 `graph.invoke(...)` 都改为
+`drive_graph(graph, <initial_state 或 Command(resume=answers)>, config, answer_fn)`。
+`drive_graph` 本来就把 `first_input` 原样交给 `graph.invoke`，所以 `Command(resume=...)`
+照常工作。
+
+**修复后实测**（本地假模型，真实 CLI）：
+
+```
+--scenario gasification --accept-defaults                 -> status READY, exit 0,
+                                                             spec-case-1.json 生成
+--scenario gasification --no-input                        -> exit 3, paused.json 落盘, 无 spec
+--scenario gasification --answer q-volumetric-flow=默认 \
+        --answer q-coal-definition=按纯碳处理              -> "resuming paused run: …",
+                                                             status READY, exit 0
+```
+
+最后一条的 spec 里 `flow_input=normal_volume`、`reactor.solid_carbon=saturation`，
+与离线验收标准一致；恢复完成后 `paused.json` 被删除。
+
+**新增回归测试**（`test_cli.py::AcceptedDefaultsEndToEnd`，4 项）：用一个绑定随机端口的
+回环 stub 应答 `/chat/completions`，然后调用**真实的 `main()`**（真实参数解析、真实运行
+目录与检查点）：`--accept-defaults` 退出码 0；`--no-input` 退出码 3 且写下两个问题的标记、
+**不产生任何 spec**；两条 `--answer` 不带 `--out` 时自行找到暂停的运行并跑到退出码 0
+（`flow_input`/`solid_carbon` 正确、标记被清除）；没有暂停运行时 `--answer` 返回退出码 2。
+
+**测试数量**：`reactor_agent` 373 → **377**（+4）；`hysys_tools` 184 不变。
+
+### 结果 3：用假模型端点跑通的真实 CLI 路径
+
+以下都走**真实入口**（不是测试内部函数），因此可以引用为"这两条离线验收命令在真实
+CLI 上确实工作"，只是模型响应是本地 stub：
+
+| 命令 | 结果 |
+| --- | --- |
+| `--scenario gasification --no-input` | 退出码 3；两个问题各带默认答案；未创建任何案例；写了 `paused.json` |
+| `--scenario gasification --accept-defaults` | 退出码 0；`status READY`；`spec-case-1.json`；`flow_input=normal_volume`、`solid_carbon=saturation`；假设分三组正确 |
+| `--scenario gasification --answer …（不带 --out）` | 自动定位到最近一次暂停目录并续跑，退出码 0 |
+
+日志在 `_review/checkpoint-D/live/`（该目录被 `.gitignore` 忽略）。
+
+### 结果 4：第二个真实缺陷——预览路径绕过了客户端接缝
+
+跑全套测试时 `test_web.PreviewHasNoSideEffects` 偶发 `TimeoutError`（单独跑能过）。
+原因不是测试慢：`run_dry_pipeline_in_memory` **自己新建了一个 `ChatClient`**，绕过了
+`WebApp.client()` 这个接缝，于是测试注入的 `min_interval=0` 没有作用，函数内部用的是
+真实默认值（`min_interval=2.5`、`attempts=3`），在整套测试并发跑时重试到客户端 60 秒超时。
+
+修复：把客户端作为参数传进去（`run_dry_pipeline_in_memory(..., client)`），
+由路由处 `self.app.client()` 提供。修复后 web 套件从 **59 秒降到 7.3 秒**，全套也稳定通过。
+这条与结果 2 是同一类问题：**测试通过但真实入口/真实参数没被覆盖**。
+
+
 
 
 

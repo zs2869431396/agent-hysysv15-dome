@@ -471,13 +471,17 @@ def main(argv: list[str] | None = None) -> int:
                 # Resume the paused run. Passing a fresh initial state here instead
                 # would start a new run and silently discard the answer - which is
                 # exactly what happened the first time this was written.
-                state = graph.invoke(Command(resume=answers), config)
+                state = drive_graph(graph, Command(resume=answers), config, answer_fn)
             else:
-                state = graph.invoke(
+                state = drive_graph(
+                    graph,
                     initial_state(text, scenario_label=label, kind=kind, phase=phase,
                                   feed_basis=feed_basis, allowed_ungrounded=allowed),
-                    config)
+                    config, answer_fn)
             if state.get('__interrupt__'):
+                # Paused: either nobody could answer, or a question has no default.
+                # Nothing has been run, and the checkpoint means an answer can still
+                # arrive later, in another process.
                 questions = state['__interrupt__'][0].value.get('questions') or []
                 _print_ascii('PAUSED for clarification. Nothing was executed.')
                 for question in questions:

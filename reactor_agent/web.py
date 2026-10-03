@@ -363,18 +363,20 @@ def persist_run(run: Run, state: dict[str, Any]) -> None:
 
 
 def run_dry_pipeline_in_memory(text: str, scenario: str, kind: str, phase: str,
-                               feed_basis: str, settings: Settings) -> dict[str, Any]:
+                               feed_basis: str, client: ChatClient) -> dict[str, Any]:
     """Preview a request without creating anything on disk.
 
     Used by `POST /api/preview`: the page wants to show what the system understood
     before spending a HYSYS run, and "asking a question has no side effects" is a
     project rule, so this path writes no file at all. It costs one model call.
+
+    `client` is the app's own client factory result, not a fresh one, so the model
+    client is configured in exactly one place.
     """
     import tempfile
 
     from .pipeline import run_pipeline
 
-    client = ChatClient(settings.config(), logger=lambda _m: None)
     with tempfile.TemporaryDirectory(prefix='agent-preview-') as tmp:
         # The pipeline insists on a run root; a temporary directory keeps the rule
         # that a preview leaves the project's own folders untouched.
@@ -594,7 +596,7 @@ class Handler(BaseHTTPRequestHandler):
             feed_basis = str(payload.get('basis') or 'mass_fraction')
         try:
             result = run_dry_pipeline_in_memory(text, scenario, kind, phase,
-                                                feed_basis, self.app.settings)
+                                                feed_basis, self.app.client())
         except Exception as exc:                      # noqa: BLE001
             self._error(500, 'the preview failed: %s' % exc)
             return
