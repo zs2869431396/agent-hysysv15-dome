@@ -1,6 +1,6 @@
 # hysys_tools 工具参考
 
-本文档面向工具调用方。当前版本 `2026-10-03-equilibrium-integration-1` 已接入气相等温 Equilibrium 和饱和碳气化主验收，正式版远程验收待运行；下文“已验证”指历史路径。新增接口、Q/K 门控与操作步骤以 [本次接入说明](EQUILIBRIUM_INTEGRATION.md) 为准。
+本文档面向工具调用方。当前版本 `2026-10-03-equilibrium-integration-1` 已接入气相等温 Equilibrium 和饱和碳气化，并在远程验收 `20261003-105341-4467d9c9` 中六个工况全部通过（`ALL_SCENARIOS_PASS`）。13 个运行文件的 SHA256 见 `docs/tool-acceptance-20261003-105341.json`。下文“已验证”指在该次验收或更早的历史验收中真机通过的路径。Equilibrium 的 Q/K 门控与拟合细节见 [接入说明](EQUILIBRIUM_INTEGRATION.md)，验收流程见 [远程验收说明](REMOTE_VALIDATION.md)。
 
 ## 1. 它做什么
 
@@ -30,7 +30,7 @@ python -m hysys_tools --spec specs\toluene-disproportionation.json --folder runs
 
 跑完后，`runs\20261002-120000-toluene\` 里会有 `result.json`、`steps.json` 和 `agent-toluene.hsc`。
 
-`Run-Tool-Layer.cmd` 会按顺序跑完四个示例（健康检查 → 写示例 → 甲苯 → 重整 710/600°C → 气化），输出到 `tool-layer-runs\<时间戳>\`。
+`Run-Tool-Layer.cmd` 现在只是兼容入口，直接调用 `Run-Remote-Validation.cmd`：先跑离线检查，再串行跑六个验收工况，输出到 `tool-layer-runs\acceptance-<时间戳>-<随机编号>\`，见 [远程验收说明](REMOTE_VALIDATION.md)。
 
 ## 4. 命令行
 
@@ -39,7 +39,7 @@ python -m hysys_tools --spec specs\toluene-disproportionation.json --folder runs
 | `--health-check` | 检查 COM 连接，在 stdout 打印 JSON：`status`、`application`、`python`、`case_count`。PASS 时退出码 0，否则 1 |
 | `--validate-only` | **不碰 HYSYS**，只检查 spec，毫秒级返回。打印 `ok`、`errors`、`warnings`、`readback`；退出码 0 表示没问题，1 表示有问题，2 表示 spec 读不进来。**会把能发现的问题一次全部列出**，所以一轮就能修完。建议 agent 每次先跑这个再跑 `--spec` |
 | `--list-capabilities` | 打印能力说明 JSON（反应器类型及各自验证状态、进料基准、流量/温度/压力单位、支持的组分、注意事项），退出码 0 |
-| `--write-examples DIR` | 把四份示例 spec 写到 DIR，退出码 0 |
+| `--write-examples DIR` | 把全部示例 spec 写到 DIR，退出码 0。当前 9 份：甲苯；重整 Equilibrium 710/600°C 及其 Gibbs 对照；气化的正式版（饱和碳）、饱和碳别名版、原生流量版和原题未澄清版（用于回归，预检应失败） |
 | `--spec FILE` | 要执行的 spec 文件。`build_case` 内部会先跑一次预检，所以 spec 有问题时**不会创建任何案例** |
 | `--folder DIR` | 案例文件和结果写到这里。默认是 spec 所在目录，**不要用默认值**（原因见第 2 节） |
 | `--result FILE` | 结果文件路径，默认 `<folder>\result.json`。父目录会被自动创建，所以连接失败时结果也不会丢 |
@@ -80,10 +80,11 @@ python -m hysys_tools --spec specs\toluene-disproportionation.json --folder runs
 | `scenario` | 否 | — | 工具不使用，仅作记录 |
 | `fluid_package` | 是 | — | 见 5.2 |
 | `feeds` | 是 | — | 列表，**只支持一项，多项会被预检拒绝**，见 5.3 |
-| `reactions` | 视反应器而定 | `[]` | 转化反应器必填；Gibbs 反应器不使用（只检查元素是否平衡），见 5.4 |
+| `reactions` | 视反应器而定 | `[]` | 转化反应器和平衡反应器必填；Gibbs 反应器不使用（只检查元素是否平衡），见 5.4 |
 | `reactor` | 是 | — | 见 5.5 |
 | `assumptions` | 否 | `[]` | 字符串列表，原样复制到结果里 |
 | `open_questions` | 否 | `[]` | 字符串列表，原样复制到结果里 |
+| `blocking_questions` | 否 | `[]` | 字符串列表。**非空时预检拒绝执行**，用于记录必须先澄清才能建模的问题 |
 
 ### 5.2 `fluid_package`
 
@@ -102,7 +103,11 @@ python -m hysys_tools --spec specs\toluene-disproportionation.json --folder runs
 | `fractions` | 分数基准时必填 | — | `{组分: 分数}`，加和应为 1（预检会检查） |
 | `flows` | 流量基准时必填 | — | `{组分: 流量}`，单位是 `total_flow_unit` |
 | `total_flow` | 分数基准时必填 | — | 总流量，必须为正 |
-| `total_flow_unit` | 否 | `kmol/h` | 摩尔单位：`kmol/h`、`kmol/hr`、`kgmole/h`、`kgmol/h`、`mol/h`；质量单位：`kg/h`、`kg/hr`、`kgh`、`t/h`、`ton/h`。体积单位（比如 `Nm3/h`）**一律拒绝**，因为换算需要先说明标准状态，以及它指的是哪一股物流 |
+| `total_flow_unit` | 否 | `kmol/h` | 摩尔单位：`kmol/h`、`kmol/hr`、`kgmole/h`、`kgmol/h`、`mol/h`；质量单位：`kg/h`、`kg/hr`、`kgh`、`t/h`、`ton/h`。标准体积单位 `Nm3/h` **只在 `flow_input` 为 `normal_volume` 时接受**；其他情况下体积单位一律拒绝，因为换算需要先说明标准状态，以及它指的是哪一股物流 |
+| `flow_input` | 否 | `local` | 总流量的输入方式。`local`：按上面的摩尔/质量单位在本地换算。`normal_volume`：`total_flow` 是标准气体体积（`Nm3/h`），按下面两个字段给出的标准状态用理想气体摩尔体积换算成 kmol/h 后交给 HYSYS。`hysys`：把单位原样交给 HYSYS 的 `SetValue`，只接受探针实测可用的单位，见 `flow_property` |
+| `standard_temperature_C` | `normal_volume` 时必填 | — | 标准状态温度，°C。0°C / 101.325 kPa 时摩尔体积为 22.413970 m³/kmol |
+| `standard_pressure_kPa` | `normal_volume` 时必填 | — | 标准状态压力，kPa，必须为正 |
+| `flow_property` | `hysys` 时必填 | — | `MolarFlow`（单位只接受 `gmole/h`、`kgmole/h`、`lbmole/h`）或 `MassFlow`（只接受 `kg/h`、`lb/h`）。该工作站的 COM 不接受 `Nm3/h`，HYSYS 自带的标准体积基准实测为 15°C，与题目的 0°C 不同，所以 Nm³ 要走 `normal_volume` |
 | `temperature` | 是 | — | 不能低于绝对零度（预检会检查） |
 | `temperature_unit` | 否 | `C` | `C`、`degC`、`celsius`、`K`、`kelvin`、`F`、`degF` |
 | `pressure` | 是 | — | 按**绝对压力**处理，不支持表压。必须为正（预检会检查） |
@@ -117,19 +122,20 @@ python -m hysys_tools --spec specs\toluene-disproportionation.json --folder runs
 | `mass_fraction` | `fractions` + `total_flow` | 只能是质量单位 |
 | `molar_flow` | `flows` | 只能是摩尔单位 |
 | `mass_flow` | `flows` | 只能是质量单位 |
+| `molar_fraction` 或 `mass_fraction`，配 `flow_input: normal_volume` | `fractions` + `total_flow` | 只能是 `Nm3/h`，并给出两项标准状态 |
 
-传给 HYSYS 的方式：组成一律换算成摩尔分数写入。`molar_flow` 基准写摩尔流量，其他基准用库里的分子量换算成质量流量再写入，由 HYSYS 自己推出摩尔流量。后面所有校验都按 HYSYS 推出的摩尔流量来计算。
+传给 HYSYS 的方式：组成一律换算成摩尔分数写入。`molar_flow` 基准写摩尔流量，其他基准用库里的分子量换算成质量流量再写入，由 HYSYS 自己推出摩尔流量。`flow_input: normal_volume` 时，总量在本地按 R·T/P 换算成摩尔流量写入（例如 80000 Nm³/h ÷ 22.413970 m³/kmol = 3569.20 kmol/h），换算过程记录在结果的 `native_flow_readback` 里。后面所有校验都按 HYSYS 推出的摩尔流量来计算。
 
-### 5.4 `reactions[]`（转化反应器）
+### 5.4 `reactions[]`（转化反应器与平衡反应器）
 
 | 字段 | 必填 | 默认值 | 说明 |
 |---|---|---|---|
-| `name` | 否 | `RXN-1`、`RXN-2`…… | 反应名称 |
+| `name` | 否 | 转化反应 `RXN-1`、`RXN-2`……；平衡反应 `EQ-1`、`EQ-2`…… | 反应名称，会成为 HYSYS 里的反应对象名，建议只用 ASCII |
 | `stoichiometry` | 是 | — | `{组分: 系数}`，反应物为负。必须元素平衡，所用组分必须都在 `fluid_package.components` 里。组分名可以用第 6 节的别名 |
-| `conversion_percent` | 二选一 | — | 范围 (0, 100]。写 50 表示 50%，不是 0.5 |
+| `conversion_percent` | 转化反应二选一 | — | 范围 (0, 100]。写 50 表示 50%，不是 0.5。平衡反应不使用 |
 | `conversion_coefficients` | 二选一 | — | `[c0, c1, c2]`，按原样写入 HYSYS 的转化率关联式。用这种写法时，工具**不做**独立的转化率校验。未验证 |
 | `base_component` | 实际必填 | — | 转化率的基准反应物；缺失或不支持时在预检阶段报错 |
-| `phase` | 否 | `combined` | `vapour`、`liquid`、`liquid2`、`combinedLiquid`、`solid`、`combined`、`polymer`、`unknown` |
+| `phase` | 否 | 转化反应 `combined`；平衡反应 `vapour` | `vapour`、`liquid`、`liquid2`、`combinedLiquid`、`solid`、`combined`、`polymer`、`unknown`。**平衡反应只接受 `vapour`**，且不能含 Carbon |
 
 ### 5.5 `reactor`
 
@@ -141,6 +147,7 @@ python -m hysys_tools --spec specs\toluene-disproportionation.json --folder runs
 | `outlet_temperature` | 等温时必填 | — | 出口温度 |
 | `outlet_temperature_unit` | 否 | `C` | 同 `temperature_unit` |
 | `pressure_drop_kPa` | 否 | `0` | 压降，单位 kPa |
+| `solid_carbon` | 否 | — | 唯一取值 `saturation`。要求 `kind` 为 `gibbs`、`thermal_mode` 为 `isothermal`，组分表包含 Carbon、Water、CO、Hydrogen、CO2、Methane，进料只含碳和水。工具自建转化率反应器（记账反应 3C + 2H2O → 2CO + CH4）加仅含气相的 Gibbs 反应器，外层求解使气相碳活度为 1；spec 里给的 `reactions` 不使用。结果增加 `solid_carbon_saturation`，报告的热负荷是两台反应器之和 |
 
 工具自动创建、名字固定的对象：物料物流 `FEED`、`VAPOUR`、`LIQUID`，能量物流 `DUTY`，反应集 `AGENT-SET`。
 
@@ -148,13 +155,15 @@ python -m hysys_tools --spec specs\toluene-disproportionation.json --folder runs
 
 | 组合 | 需要什么 | 真机状态 |
 |---|---|---|
-| `conversion` + `adiabatic`，单个反应 | 一个反应，带 `stoichiometry`、`conversion_percent`、`base_component` | **已验证**（甲苯歧化，转化率 50%） |
+| `conversion` + `adiabatic`，单个反应 | 一个反应，带 `stoichiometry`、`conversion_percent`、`base_component` | **已验证**（甲苯歧化，转化率 50%；验收 `20261003-105341` 及历史验收） |
 | `conversion` + `isothermal` | 同上，再加 `outlet_temperature` | 未验证 |
 | `conversion`，多个反应 | | 当前拒绝：独立校验尚不支持各反应进度分解 |
-| `gibbs` + `isothermal` | `components` 列全所有候选产物，`reactions` 可以为空 | **已验证**（甲烷重整 600°C 和 710°C） |
+| `gibbs` + `isothermal`，气相 | `components` 列全所有候选产物，`reactions` 可以为空 | **已验证**（甲烷重整 600°C 和 710°C；历史验收，并作为验收 `20261003-105341` 的 Gibbs 对照再次通过） |
 | `gibbs` + `adiabatic` | | 预检拒绝：没有经验证的热边界配置路径 |
-| `gibbs`，含固体碳 | | 未验证。只验证过 `Carbon` 能加进组分表 |
-| `equilibrium` | | **已接入，正式版待远程验收**。用 `LnKSource=1` 和 8 元素 ln(K) 系数数组；每次运行拟合、读回和 Q/K 校验。直接 Gibbs 来源不可写不再阻断方程来源 |
+| `gibbs`，含固体碳，不设 `solid_carbon` | | **运行时在求解前拒绝**：库 Carbon 带的是气态原子碳的 Gibbs 数据，直接求解会得到不可能的出口 |
+| `gibbs` + `isothermal` + `solid_carbon: saturation` | 碳加水进料，六个组分齐全 | **已验证**（水煤浆气化 1400°C；验收 `20261003-105341`） |
+| `equilibrium` + `isothermal`，气相 | 完整且守恒的 `vapour` 反应，`outlet_temperature` | **已验证**（甲烷重整 600°C 和 710°C，两反应；验收 `20261003-105341`）。用 `LnKSource=1` 和 8 元素 ln(K) 系数数组；每次运行拟合、读回并做出口 Q/K 校验 |
+| `equilibrium`，液相、含固体或绝热 | | 预检拒绝 |
 
 ### 5.7 完整示例（转化反应器，已验证）
 
@@ -194,7 +203,11 @@ python -m hysys_tools --spec specs\toluene-disproportionation.json --folder runs
 }
 ```
 
-Gibbs 反应器的完整示例，用 `python -m hysys_tools --write-examples DIR` 生成的 `methane-steam-reforming-710C.json` 即可。它的要点是：`basis` 为 `molar_flow`，`flows` 为 `{"Methane": 1000, "Water": 2700}`，`reactions` 为空，`reactor` 为 `{"kind": "gibbs", "thermal_mode": "isothermal", "outlet_temperature": 710}`。
+其他反应器的完整示例用 `python -m hysys_tools --write-examples DIR` 生成：
+
+- **Equilibrium**：`methane-steam-reforming-710C.json`。`basis` 为 `molar_flow`，`flows` 为 `{"Methane": 1000, "Water": 2700}`；两个 `vapour` 反应（重整与水煤气变换）；`reactor` 为 `{"kind": "equilibrium", "thermal_mode": "isothermal", "outlet_temperature": 710}`。
+- **Gibbs**：`methane-steam-reforming-gibbs-710C.json`。进料相同，`reactions` 为空，`reactor.kind` 为 `gibbs`。
+- **饱和碳气化**：`coal-slurry-gasification.json`。`basis` 为 `mass_fraction`，`fractions` 为 `{"Carbon": 0.62, "Water": 0.38}`，`total_flow` 为 80000、单位 `Nm3/h`，`flow_input` 为 `normal_volume`，标准状态 0°C / 101.325 kPa；`reactor` 为 `{"kind": "gibbs", "thermal_mode": "isothermal", "outlet_temperature": 1400, "solid_carbon": "saturation"}`。
 
 ## 6. 支持的组分
 
@@ -212,7 +225,7 @@ Gibbs 反应器的完整示例，用 `python -m hysys_tools --write-examples DIR
 | `o-Xylene` | `o-Xylene` | ortho-xylene | 已验证 |
 | `m-Xylene` | `m-Xylene` | meta-xylene | 已验证 |
 | `p-Xylene` | `p-Xylene` | para-xylene | 已验证 |
-| `Carbon` | `Carbon` | C、graphite、coal、coke、char | 已验证能加进组分表；作为固体参与 Gibbs 反应未验证 |
+| `Carbon` | `Carbon` | C、graphite、coal、coke、char | 通过 `solid_carbon: saturation` 路线已验证；普通 Gibbs 直接使用会在求解前被拒绝，平衡反应不接受 |
 | `Nitrogen` | 未知 | N2 | 未验证 |
 | `Oxygen` | 未知 | O2 | 未验证 |
 
@@ -252,6 +265,10 @@ Gibbs 反应器的完整示例，用 `python -m hysys_tools --write-examples DIR
 | `component_flows_kmol_h` | 出口各组分总摩尔流量（汽相加液相） |
 | `heat_duty_kW` | 外部供给反应器的热量。正值表示加热（甲烷重整吸热，读出来是正值，已验证）。绝热时为 0 |
 | `solver_is_solving` | 读数时求解器是否还在运行，正常应为 `false` |
+| `solver_evidence` | 连续稳定读数次数、采样次数与检查范围 |
+| `native_flow_readback` | 仅 `flow_input` 为 `normal_volume` 或 `hysys` 时有：请求值、单位、标准状态、摩尔体积、换算出的摩尔流量与各组分流量 |
+| `equilibrium_evidence` | 仅 Equilibrium：每个反应的拟合系数、拟合最大残差、目标温度下的 ln(K)（bar 基准）及求解前后的系数读回 |
+| `solid_carbon_saturation` | 仅饱和碳路线：碳转化率 X、水量允许的上限、三条途径的碳活度、两台反应器各自的热负荷，以及 `library_carbon_gibbs_used: false` |
 | `checks` | 独立校验结果，见 7.3 |
 | `steps` | 每一步的执行记录，见 7.5 |
 
@@ -267,6 +284,10 @@ Gibbs 反应器的完整示例，用 `python -m hysys_tools --write-examples DIR
 | `reactant_conversion_percent` | 每个进料组分的转化率，键为读回名。**这是各场景的关键转化率**：重整看 `Methane`，甲苯歧化看 `Toluene` |
 | `co_yield` | 只在进料含碳时出现，见下 |
 | `heat_duty_kW`、`heat_duty_scope` | 热负荷，以及它的口径说明。等温时它是反应器热负荷，包含进料升温的显热，不只是反应热 |
+| `equilibrium_QK` | 仅 Equilibrium：用实际出口气相组成、温度、压力算出每个反应的 Q/K，要求 abs(ln(Q/K)) < 0.05，否则整次运行判为失败 |
+| `condensed_phase_location` | 仅组分含固体碳时：固体碳是否全部留在凝聚相，判定 `CONDENSED_PHASE_ONLY` 才通过 |
+| `gibbs_equilibrium` | 仅 Gibbs 反应器（给定出口温度时）：用 C + 2H2 ⇌ CH4 等反应的平衡关系独立核对出口组成，排除“原子守恒但不可能平衡”的出口；组分含固体碳时还要求出口与石墨共存。判定 `CONSISTENT` 才通过 |
+| `independent_duty` | 仅组分含固体碳且为等温时：用独立热力学数据（NIST/JANAF 气体、石墨、液态水）重算热负荷，与 HYSYS 相对偏差不超过 1% |
 
 `co_yield` 里的字段：
 
@@ -369,11 +390,19 @@ agent 调用时更推荐用子进程跑命令行：每个案例一个独立进�
 
 ## 12. 可靠性修复版接口补充
 
-- 可选 `blocking_questions: list[str]` 非空时预检拒绝执行；普通 `open_questions` 继续作为说明性警告。气化示例新增流量定义、煤定义两个阻塞项。
+- 可选 `blocking_questions: list[str]` 非空时预检拒绝执行；普通 `open_questions` 继续作为说明性警告。原题未澄清的气化示例 `coal-slurry-gasification-unclarified` 保留流量定义、煤定义两个阻塞项，用于回归；正式气化示例已无阻塞项。
 - `case_name` 必须是 1–100 字符的 Windows 文件名主体，不含路径、保留名和尾随空格/点；已有同名 HSC 不覆盖。
 - 非有限数字、重复组分别名、压降不小于进料压力、同时给定 conversion_percent 和 conversion_coefficients 均拒绝。
 - `solver_evidence` 记录连续稳定次数、采样次数与检查范围。连续 3 次完整读回稳定且求解器空闲才接受；稳定性不是热力学正确性的独立证明。
 - 输出温度/压力不满足目标、绝热热负荷不为零归入 result_check；无有效读回的超时归入 runtime。
 - 缺少 COM 依赖也会记录结构化错误。结果 JSON 使用原子替换，写盘失败不再静默吞掉。
-- `capability_combinations` 分别标识 historically_verified、experimental、unsupported；本修复版本的 remote_validation 仍为 pending。
+- `capability_combinations` 分别标识 historically_verified、experimental、unsupported。注意：`hysys_tools/capabilities.py` 里 `current_revision_remote_validation` 仍写着 `pending`，Equilibrium 与饱和碳仍标 experimental，这是打包前写入的文字；为保持验收哈希一致没有修改。验收结论以 `docs/tool-acceptance-20261003-105341.json` 为准，智能体的能力表也按它判定。
 - 推荐用 Run-Remote-Validation.cmd 验收，Run-Tool-Layer.cmd 作为兼容入口。结果有 summary.json 和完整证据 ZIP。该 runner 有互斥与总超时；直接工具 CLI 调用仍须自行串行。
+
+## 13. Equilibrium 与饱和碳接入（2026-10-03）
+
+- 新版本 `2026-10-03-equilibrium-integration-1` 在验收 `20261003-105341-4467d9c9` 中通过六个工况：甲苯、两个 Gibbs 重整对照、两个 Equilibrium 重整、饱和碳气化。
+- Equilibrium：每个出口温度上下 150 K 取 8 点，拟合 ln K = A + B/T + C·ln T，最大残差不超过 0.005；求解前后都读回系数；出口 Q/K 不满足 abs(ln(Q/K)) < 0.05 就判失败。拟合准确和 Q/K 接近 1 不能证明高温区 Gibbs 数据本身准确。
+- 验收时同温度的 Equilibrium 与 Gibbs 交叉比对：甲烷转化率相差不超过 0.5 个百分点，热负荷相对差不超过 1%。
+- 饱和碳气化：煤按纯碳、Nm³ 按 0°C / 101.325 kPa 的进料总量、无氧进料（外供热），这三项是建模假设，报告必须保留。未反应碳在名为 `LIQUID` 的出口物流中，实为固相。
+- 智能体层的对应修改见 `docs/AGENT_FIX_NOTES.md`。

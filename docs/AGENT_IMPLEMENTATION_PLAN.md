@@ -1,5 +1,7 @@
 # HYSYS Agent 搭建规划与考核差距检查
 
+> **历史记录，不代表当前状态。** 本文写于 2026-10-02 规划阶段，保留用于说明设计过程。此后工具层已通过验收 `20261003-105341-4467d9c9`（含 Equilibrium 与饱和碳气化），智能体也已实现并同步到该版本。文中“Equilibrium 禁用”“气化应被拒绝”“Agent 尚未实现”等说法都已过时。现状请看 `README.md`、`docs/REVIEW_BRIEF.md` 和 `docs/AGENT_FIX_NOTES.md`。
+
 日期：2026-10-02（Asia/Shanghai）  
 目标：基于现有 Python 工具层，用 LangGraph 完成“自然语言 → 建模判断 → HYSYS 新建并求解 → 校验 → 中文结果”的闭环。本文是后续实施清单，本轮未实现 Agent 或修改工具层业务代码。
 
