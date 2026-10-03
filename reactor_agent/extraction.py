@@ -34,7 +34,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from .llm import TERMINAL_ERROR_KINDS, ChatClient, LlmError
+from .llm import ChatClient, LlmError
 from .units import (
     COMPOSITION_UNITS,
     FIELD_QUANTITY,
@@ -865,7 +865,10 @@ def extract(client: ChatClient, text: str, kind: str | None = None,
     """Ask the model for the facts, retrying while required values are missing.
 
     Three different retries live around here and they are not the same thing:
-      * the client retries transient HTTP failures (see `llm.RETRYABLE_STATUS`);
+      * the client owns failures: transport, HTTP (including the retryable statuses and
+        the request budget). Any `LlmError` ends this function immediately - retrying
+        here as well multiplied the request count for a single intake, because the gap
+        retry used to run again after the client had already spent its attempts;
       * this function retries a *successful* call whose answer is missing a required
         value, because those gaps proved to be random - 83% of calls were complete
         first time and 100% were complete within three;
@@ -890,14 +893,11 @@ def extract(client: ChatClient, text: str, kind: str | None = None,
         try:
             facts = _call_once(client, SYSTEM_PROMPT, text)
         except LlmError as exc:
+            # Terminal by definition: the client has already exhausted its own retries,
+            # and a second round from here would only add requests.
             extraction.attempts = attempt
             extraction.error = str(exc)
-            if exc.kind in TERMINAL_ERROR_KINDS:
-                # A spent credential or an exhausted request budget: asking again would
-                # just add requests to an endpoint that has already said no.
-                return extraction
-            last_error = str(exc)
-            continue
+            return extraction
 
         problems = validate_facts(facts)
         if problems and not repaired:
@@ -909,10 +909,7 @@ def extract(client: ChatClient, text: str, kind: str | None = None,
             except LlmError as exc:
                 extraction.attempts = attempt
                 extraction.error = str(exc)
-                if exc.kind in TERMINAL_ERROR_KINDS:
-                    return extraction
-                last_error = str(exc)
-                continue
+                return extraction
             problems = validate_facts(facts)
 
         if problems:

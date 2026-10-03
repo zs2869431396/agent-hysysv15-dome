@@ -61,11 +61,16 @@ def fake_client(bodies):
     return ChatClient(config, transport=transport, sleeper=lambda _s: None)
 
 
-def counting_client(bodies):
-    """A fake client that also records every request payload it was sent."""
+def counting_client(bodies, statuses=None):
+    """A fake client that also records every request payload it was sent.
+
+    `statuses` injects raw `(status, body)` replies instead of 200-plus-JSON ones, which
+    is how the HTTP failure paths are exercised.
+    """
     config = LlmConfig(base='https://example.test/v1', key='sk-' + 't' * 30,
                        min_interval=0)
-    queue = [(200, reply(body)) for body in bodies]
+    queue = ([(status, body) for status, body in statuses] if statuses
+             else [(200, reply(body)) for body in bodies])
     seen: list[dict] = []
 
     def transport(url, payload, headers, timeout):
@@ -512,6 +517,21 @@ class ExtractionCalls(unittest.TestCase):
         self.assertIsNotNone(result.error)
         self.assertEqual(result.gaps('conversion'),
                          list(REQUIRED_BY_KIND['conversion']))
+
+    def test_an_http_failure_is_not_retried_by_this_layer(self):
+        """The client owns HTTP failures; a second round here just adds requests.
+
+        The gap retry used to run again after the client had spent all its attempts, so
+        one intake could emit many more requests than it needed. It now ends the call on
+        the first `LlmError` - the client has already retried what it is going to.
+        """
+        c, seen = counting_client([], statuses=[(503, 'busy')] * 12)
+        c.max_requests = 8          # enough for the client's own two rounds
+        result = extract(c, TOLUENE, kind='conversion')
+        self.assertIsNotNone(result.error)
+        self.assertIn('503', result.error)
+        self.assertEqual(result.attempts, 1, 'no second gap-retry round')
+        self.assertLessEqual(len(seen), 6, 'the client retried; this layer did not')
 
     def test_verified_extraction_reports_both_kinds_of_problem(self):
         # Retry is on, so the same defective reply is served repeatedly.

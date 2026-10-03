@@ -1112,6 +1112,26 @@ CLI 上确实工作"，只是模型响应是本地 stub：
 
 **测试数量**：`reactor_agent` 395 → **408**（+13），全部通过；`hysys_tools` 184 仍全部通过。
 
+---
+
+## 用户批准后的修复 D（第 5 条）：`extract()` 不再对 HTTP 错误乘一遍重试
+
+**用户指出的放大器**：`extract()` 外层 `max_tries=3` 与 client 层 `attempts=3` 相乘。
+第 4 条已经让 401/预算终止，但**普通 HTTP 错误（如 503）仍会让外层再跑一轮**。
+
+**改动**（`reactor_agent/extraction.py`）：`extract()` 里捕获 `LlmError` 后**直接返回**，
+不再 `continue`。理由：HTTP 失败**归 client 所有**——client 已经把该试的重试试完了，
+这一层再试只是重复请求。**gap 重试只针对"调用成功但内容缺字段"**，
+**修复重问只针对"契约形状漂移"**，三种重试各管各的，不再相乘。
+
+**新增测试**（`test_extraction.py`，1 项）：`test_an_http_failure_is_not_retried_by_this_layer`——
+持久 503 时 `result.attempts == 1`（没有第二轮 gap 重试），错误里能读到 `503`，
+且请求数受 client 层约束。顺带把 `counting_client` 扩展为可注入 `(status, body)` 原始回复，
+这样才能在离线测试里真正走 HTTP 失败路径。
+
+**测试数量**：`reactor_agent` 408 → **409**（+1），全部通过；`hysys_tools` 184 仍全部通过。
+
+
 
 
 
