@@ -338,7 +338,7 @@ def _print_graph_state(state: dict) -> None:
         _print_ascii('')
         _print_ascii('problems:')
         for problem in summary['problems']:
-            _print_ascii('  - %s' % problem.encode('ascii', 'replace').decode('ascii'))
+            _print_ascii('  - %s' % problem)
     for execution in summary['executions']:
         _print_ascii('  case %-10s %-24s %6.1fs'
                      % (execution['case_id'], execution['status'],
@@ -364,7 +364,7 @@ def _print_ascii(text: str) -> None:
     try:
         print(text)
     except UnicodeEncodeError:
-        sys.stdout.write(text.encode('ascii', 'replace').decode('ascii') + '\n')
+        sys.stdout.write(text.encode('ascii', 'backslashreplace').decode('ascii') + '\n')
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -545,13 +545,13 @@ def main(argv: list[str] | None = None) -> int:
         _print_ascii('')
         _print_ascii('BLOCKING QUESTIONS (nothing was executed):')
         for question in run.blocking_questions:
-            _print_ascii('  ? %s' % question.encode('ascii', 'replace').decode('ascii'))
+            _print_ascii('  ? %s' % question)
 
     if run.problems:
         _print_ascii('')
         _print_ascii('problems:')
         for problem in run.problems:
-            _print_ascii('  - %s' % problem.encode('ascii', 'replace').decode('ascii'))
+            _print_ascii('  - %s' % problem)
 
     for execution in run.executions:
         summary = execution.summary()
