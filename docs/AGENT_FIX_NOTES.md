@@ -917,6 +917,44 @@ CLI 上确实工作"，只是模型响应是本地 stub：
 由路由处 `self.app.client()` 提供。修复后 web 套件从 **59 秒降到 7.3 秒**，全套也稳定通过。
 这条与结果 2 是同一类问题：**测试通过但真实入口/真实参数没被覆盖**。
 
+### 结果 5：换到 DeepSeek 官方 API 后暴露的**供应商不兼容**（未改代码）
+
+用户随后提供了 DeepSeek 官方凭据（`https://api.deepseek.com/v1`、`deepseek-chat`）。
+按"一次一个请求"的方式测，共 4 次模型调用，结论如下。
+
+**凭据正常**：`POST /chat/completions` 返回 200，`model=deepseek-flash`（`deepseek-chat`
+现在指向 flash），`usage` 与 `prompt_cache_hit_tokens` 正常。代码里的
+`require_key()` 也接受这把 key（`sk-` 前缀、长度 35 ≥ 20）。
+
+**但这个供应商不支持本项目的抽取方式**：
+
+1. **`response_format={"type":"json_schema"}` 被拒**：
+   `HTTP 400 {"message":"This response_format type is unavailable now"}`。
+   也就是说 `llm.py` 的首选路径在 DeepSeek 上**永远** 400。
+   而 `RETRYABLE_STATUS` 不含 400，所以每次抽取都要先白跑一次（再叠加纯文本回退）。
+2. **`response_format={"type":"json_object"}` 也被拒**：
+   `HTTP 400 "Prompt must contain the word 'json' in some form to use 'response_format'
+   of type 'json_object'"`。实测 `extraction.SYSTEM_PROMPT`（2327 字）里
+   **没有出现 "json" 这个词**，所以 DeepSeek 的 JSON 模式对当前提示词不可用。
+3. **纯文本回退会失败，但不是解析失败**：模型返回的是**合法 JSON**，用的是**它自己发明的
+   schema**。实测 toluene 场景返回的顶层键是
+   `feed / species / conversion / kinetic / reactor_type ...`，而契约要的是
+   `feed_total / feed_unit / feed_temperature / feed_pressure_unit / conversion_percent ...`，
+   `species` 要的是扁平字符串数组，模型给的是 `[{"name":"甲苯","role":"reactant"}, ...]`。
+   于是 `normalize` 报"组分 `{'name': '甲苯', 'role': 'reactant'}` 无法对应到 HYSYS 库组分"，
+   温度/压力/流量全部缺失，场景停在 `WAITING_INPUT`。
+
+**因果结论**：`json_schema` 严格结构化输出是 OpenAI 的**非标准扩展**字段
+（OpenAI 文档称之为 Structured Outputs），OpenAI 兼容网关不保证支持；DeepSeek 明确不支持。
+项目的抽取契约**依赖**这个强制约束，所以"提示词 + 纯文本回退"这一层保证不住。
+这**不是**本仓库代码的缺陷，也不是凭据问题。
+
+**我没有这样做**：没有为了适配 DeepSeek 去改 `llm.py`（计划明确写了"不在范围内：改动模型
+提示词与 `llm.py`"），也没有去改契约。需要用户决定方向后再动。
+
+**本轮模型调用次数**：DeepSeek 共 4 次（连通性 1、`json_schema` 诊断 1、
+`json_object` 诊断 1、原始回复 1），每次一个请求、不连发。
+
 
 
 
