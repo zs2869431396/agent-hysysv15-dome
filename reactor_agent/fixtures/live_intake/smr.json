@@ -1,0 +1,103 @@
+{
+  "species": [
+    "甲烷",
+    "水蒸气",
+    "一氧化碳",
+    "氢气",
+    "二氧化碳"
+  ],
+  "feed_composition": [
+    {
+      "name": "甲烷",
+      "fraction": 1
+    },
+    {
+      "name": "水蒸气",
+      "fraction": 2.7
+    }
+  ],
+  "composition_basis": "mole_ratio",
+  "reactions": [
+    {
+      "name": "主反应",
+      "species": [
+        {
+          "name": "甲烷",
+          "coefficient": -1
+        },
+        {
+          "name": "水蒸气",
+          "coefficient": -1
+        },
+        {
+          "name": "一氧化碳",
+          "coefficient": 1
+        },
+        {
+          "name": "氢气",
+          "coefficient": 3
+        }
+      ],
+      "reversible": false
+    },
+    {
+      "name": "副反应",
+      "species": [
+        {
+          "name": "一氧化碳",
+          "coefficient": -1
+        },
+        {
+          "name": "水蒸气",
+          "coefficient": -1
+        },
+        {
+          "name": "二氧化碳",
+          "coefficient": 1
+        },
+        {
+          "name": "氢气",
+          "coefficient": 1
+        }
+      ],
+      "reversible": false
+    }
+  ],
+  "conversion_percent": null,
+  "conversion_basis": null,
+  "rate_law": null,
+  "pre_exponential": null,
+  "activation_energy": null,
+  "activation_energy_unit": null,
+  "reaction_order": [],
+  "reactor_volume": null,
+  "reactor_volume_unit": null,
+  "residence_time": null,
+  "residence_time_unit": null,
+  "catalyst_mass": null,
+  "catalyst_mass_unit": null,
+  "phase": "gas",
+  "feed_total": null,
+  "feed_unit": null,
+  "feed_temperature": 520,
+  "feed_temperature_unit": "℃",
+  "feed_pressure": null,
+  "feed_pressure_unit": null,
+  "case_pressures": [
+    13.5,
+    13.5
+  ],
+  "case_pressure_unit": "bar",
+  "outlet_temperatures": [
+    710,
+    600
+  ],
+  "outlet_temperature_unit": "℃",
+  "missing_information": [
+    "进料流量具体数值（用户要求自定但需符合工厂正常处理量，未提供具体基准）",
+    "催化剂类型及活性参数",
+    "反应平衡常数或动力学数据",
+    "热量损失或热效率",
+    "反应器类型细节（如管式、固定床等）"
+  ]
+}

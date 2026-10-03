@@ -1,0 +1,77 @@
+{
+  "species": [
+    "煤炭",
+    "水",
+    "一氧化碳",
+    "氢气"
+  ],
+  "feed_composition": [
+    {
+      "name": "煤炭",
+      "fraction": 38
+    },
+    {
+      "name": "水",
+      "fraction": 62
+    }
+  ],
+  "composition_basis": "mass_fraction",
+  "reactions": [
+    {
+      "name": "C+H2O → CO+H2",
+      "species": [
+        {
+          "name": "煤炭",
+          "coefficient": -1
+        },
+        {
+          "name": "水",
+          "coefficient": -1
+        },
+        {
+          "name": "一氧化碳",
+          "coefficient": 1
+        },
+        {
+          "name": "氢气",
+          "coefficient": 1
+        }
+      ],
+      "reversible": false
+    }
+  ],
+  "conversion_percent": null,
+  "conversion_basis": null,
+  "rate_law": null,
+  "pre_exponential": null,
+  "activation_energy": null,
+  "activation_energy_unit": null,
+  "reaction_order": [],
+  "reactor_volume": null,
+  "reactor_volume_unit": null,
+  "residence_time": null,
+  "residence_time_unit": null,
+  "catalyst_mass": null,
+  "catalyst_mass_unit": null,
+  "phase": "unknown",
+  "feed_total": 80000,
+  "feed_unit": "Nm3/h",
+  "feed_temperature": 40,
+  "feed_temperature_unit": "摄氏度",
+  "feed_pressure": 40,
+  "feed_pressure_unit": "bar",
+  "case_pressures": [],
+  "case_pressure_unit": null,
+  "outlet_temperatures": [
+    1400
+  ],
+  "outlet_temperature_unit": "度",
+  "missing_information": [
+    "气化炉出口压力",
+    "反应转化率",
+    "动力学参数（速率方程、活化能等）",
+    "反应器类型及尺寸",
+    "煤炭的具体化学组成（如碳含量、挥发分等）",
+    "是否存在副反应或平衡限制"
+  ]
+}

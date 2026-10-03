@@ -1,0 +1,68 @@
+{
+  "species": [
+    "甲苯",
+    "苯",
+    "邻二甲苯",
+    "间二甲苯",
+    "对二甲苯"
+  ],
+  "feed_composition": [
+    {
+      "name": "甲苯",
+      "fraction": 10000
+    }
+  ],
+  "composition_basis": "mass_fraction",
+  "reactions": [
+    {
+      "name": "歧化反应",
+      "species": [
+        {
+          "name": "甲苯",
+          "coefficient": -2
+        },
+        {
+          "name": "苯",
+          "coefficient": 1
+        },
+        {
+          "name": "二甲苯",
+          "coefficient": 1
+        }
+      ],
+      "reversible": false
+    }
+  ],
+  "conversion_percent": 50,
+  "conversion_basis": "甲苯",
+  "rate_law": null,
+  "pre_exponential": null,
+  "activation_energy": null,
+  "activation_energy_unit": "",
+  "reaction_order": [],
+  "reactor_volume": null,
+  "reactor_volume_unit": "",
+  "residence_time": null,
+  "residence_time_unit": "",
+  "catalyst_mass": null,
+  "catalyst_mass_unit": "",
+  "phase": "gas",
+  "feed_total": 10000,
+  "feed_unit": "kg/h",
+  "feed_temperature": 380,
+  "feed_temperature_unit": "℃",
+  "feed_pressure": 2.5,
+  "feed_pressure_unit": "MPa",
+  "case_pressures": [],
+  "case_pressure_unit": "",
+  "outlet_temperatures": [],
+  "outlet_temperature_unit": "",
+  "missing_information": [
+    "反应是否可逆未说明，默认为不可逆",
+    "二甲苯异构体分布比例未给出",
+    "反应动力学参数缺失",
+    "反应器类型（如PFR、CSTR）未指定",
+    "操作压力是进料压力还是反应器操作压力，此处假设为进料/反应器统一压力",
+    "产物中邻、间、对二甲苯的具体摩尔比或选择性未提供"
+  ]
+}
