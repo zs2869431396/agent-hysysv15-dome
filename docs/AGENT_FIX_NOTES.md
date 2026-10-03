@@ -525,6 +525,69 @@ Gibbs 对照没有被删掉：改为新测试 `test_gibbs_comparison_carries_no_
 
 **测试数量**：`reactor_agent` 337 → **355**（+18），全部通过；`hysys_tools` 184 仍全部通过。
 
+---
+
+## 步骤 11：旧测试更新与新增测试汇总
+
+这一步计划里没有新的代码改动，要求是"汇总与核对"：允许修改的旧测试都还在（改名可以，
+删除不行），其余旧测试一字未改，并且 `run-all-tests.cmd` 收录全部套件。执行情况：
+
+### 允许表逐条核对（用 `git diff a3a315b..HEAD` 对测试文件比对 def 行）
+
+只有三条旧测试的 `def` 行被改名，与允许表完全对应；表里另外两条只改了函数体、名字保留：
+
+| 文件 | 测试 | 状态 |
+| --- | --- | --- |
+| `test_selection.py` | `test_unsupported_combinations_are_not_silently_allowed` | 名字保留，函数体按表改（删一行、加两行） |
+| `test_selection.py` | `test_solid_carbon_gibbs_is_experimental_not_verified` → `test_solid_carbon_gibbs_is_verified_via_saturation` | 改名 + 改预期 |
+| `test_normalize.py` | `test_the_capability_becomes_experimental` → `test_the_capability_is_the_saturation_route` | 改名 + 改预期 |
+| `test_normalize.py` | `test_a_choice_is_made_and_recorded_as_an_assumption` | 名字保留，断言由 `may be chosen` 改为 `可以自定` |
+| `test_compiler.py` | `test_gibbs_spec_carries_no_reactions` → `test_equilibrium_spec_carries_vapour_reactions` | 改名 + 改预期 |
+| `test_compiler.py` | 模块文档字符串 | 改为引用验收 `20261003-105341-4467d9c9` |
+
+**脚本化核对结果**：把基线（`a3a315b`）里 8 个测试文件的每个 `def test_*` 与当前 HEAD 比对，
+"消失且不在允许表内的旧测试数 = **0**"；改名后被保留下来的旧测试正好是上表那三条。
+
+### `scripts/run-all-tests.cmd` 实测（把 conda 环境放到 PATH 前，stdin 关闭以跳过 pause）
+
+```
+[1/13]  tool layer self-check (122 checks)                 122 passed, 0 failed
+[2/13]  tool layer reliability regression (184 tests)      Ran 184  OK
+[3/13]  model client                                       Ran 23   OK
+[4/13]  fact extraction and grounding                      Ran 36   OK
+[5/13]  deterministic normalisation                        Ran 62   OK
+[6/13]  reactor selection rules                            Ran 43   OK
+[7/13]  specification compiler                             Ran 33   OK
+[8/13]  execution adapter and ledger                       Ran 45   OK
+[9/13]  pipeline: refusals, dry runs, resume               Ran 23   OK
+[10/13] main graph: routing, pausing, checkpointing        Ran 53   OK
+[11/13] report renderer                                    Ran 19   OK
+[12/13] command line: answering loop and paused runs       Ran 18   OK
+[13/13] submission packager                                Ran 17   OK
+ALL SUITES PASSED.
+```
+
+第 3–12 组的 23+36+62+43+33+45+23+53+19+18 = **355**，与
+`python -m unittest discover -s reactor_agent -t .` 的总数一致；编号 `[n/13]` 与
+`docs/REVIEW_BRIEF.md` 第 3 节写的"13 个套件"一致（步骤 13 加入 `test_web` 后改为 14，
+同时会更新该文档的这句）。
+
+### 新增测试汇总
+
+| 文件 | 内容 | 来源步骤 |
+| --- | --- | --- |
+| `test_compiler.py` | Nm³ 契约校验 5 项、Question 默认值 1 项（步骤 1）；反应块按类型、ASCII 名、案例名、饱和碳、去重、煤默认题 5 项 | 1、5 |
+| `test_selection.py` | 能力表 15 行逐行、`is_executable` 一致、哈希降级、验收记录在位、未验收组合不得 verified、两条 Gibbs 系行可区分、闭合网络 7 项、关键词 4 项、热边界 4 项、候选补齐 4 项 | 2、3 |
+| `test_normalize.py` | Nm³ 默认题与确认路径 6 项、流量锚定 2 项、二甲苯假设 3 项、id 跨进程稳定 1 项、Gibbs 计划补齐 5 项 | 4、6 |
+| `test_graph.py` | 编译失败为 FAILED 1 项、问题带默认值 1 项、Nm³ 回答解析与一轮跑通 16 项 | 6、7 |
+| `test_report.py`（新） | 两条路径一致、固相碳、氧平衡上限、温度对比与反例、Q/K 行、adapter 兼容旧结果 19 项 | 8 |
+| `test_extraction.py` | 方程式识别正反例与系数核对 8 项 | 9 |
+| `test_cli.py`（新） | 作答循环三种模式、暂停目录定位、场景表、运行目录名 18 项 | 10 |
+
+**测试数量**：`reactor_agent` 355、`hysys_tools` 184，两者全部通过；本步只做核对，
+没有代码改动，因此没有新的数字变化。最终总数（含步骤 13 之后）记在文件末尾。
+
+
 
 
 
