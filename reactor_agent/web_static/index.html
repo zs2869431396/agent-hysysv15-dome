@@ -212,7 +212,7 @@
     (payload.scenarios || []).forEach(function (item) {
       var option = document.createElement("option");
       option.value = item.name;
-      option.textContent = item.name + "（" + item.label + "）";
+      option.textContent = item.label || item.name;
       option.dataset.text = item.text;
       select.appendChild(option);
     });

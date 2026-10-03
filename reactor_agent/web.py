@@ -50,6 +50,12 @@ INDEX_FILE = STATIC_DIR / 'index.html'
 DEFAULT_HOST = '127.0.0.1'
 DEFAULT_PORT = 8765
 
+SCENARIO_LABELS = {
+    'toluene': '甲苯歧化',
+    'smr': '甲烷蒸汽重整',
+    'gasification': '水煤浆气化',
+}
+
 # The scenarios the page offers, reused from the CLI so the two cannot drift.
 def scenarios() -> dict[str, dict[str, str]]:
     from .__main__ import SCENARIOS
@@ -450,7 +456,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == '/api/scenarios':
             self._json(200, {'scenarios': [
-                {'name': name, 'label': scenario['label'],
+                {'name': name, 'label': SCENARIO_LABELS.get(name, scenario['label']),
                  'text': scenario['text']}
                 for name, scenario in sorted(scenarios().items())]})
             return
