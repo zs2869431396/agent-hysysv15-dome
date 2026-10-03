@@ -298,9 +298,15 @@ def _case_block(execution: dict[str, Any]) -> list[str]:
 
     if results.get('normal_volume_conversion'):
         conversion = results['normal_volume_conversion']
+        if isinstance(conversion, dict):
+            detail = '，'.join('%s %s' % (key, _fmt(value, digits=4))
+                              for key, value in conversion.items())
+        elif isinstance(conversion, str):
+            detail = conversion
+        else:
+            detail = '未报告（标准体积换算字段类型异常）'
         lines.append('  标准体积换算：%s'
-                     % '，'.join('%s %s' % (key, _num(value, 4))
-                                for key, value in conversion.items()))
+                     % detail)
 
     if results.get('warnings'):
         lines.append('  工具层提示：')

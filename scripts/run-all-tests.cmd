@@ -60,7 +60,7 @@ if errorlevel 1 set "FAILED=1"
 echo.
 
 echo [11/14] report renderer: one document for both callers
-python -m unittest reactor_agent.test_report
+python -m unittest reactor_agent.test_report reactor_agent.test_saved_report
 if errorlevel 1 set "FAILED=1"
 echo.
 
