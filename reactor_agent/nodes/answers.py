@@ -18,6 +18,7 @@ explicit act, which the CLI performs by filling in the default text.
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -355,8 +356,21 @@ def apply_answers(facts: dict[str, Any], answers: dict[str, Any],
             note.append('%s: %s' % (question_id, outcome['note']))
 
     for question_id, answer in (answers or {}).items():
-        if question_id == 'q-feed-composition' and isinstance(answer, list):
-            merged['feed_composition'] = answer
+        if question_id == 'q-feed-composition' or question_id.startswith('q-composition-species-'):
+            if isinstance(answer, str):
+                try:
+                    answer = json.loads(answer)
+                except (ValueError, TypeError):
+                    if note is not None:
+                        note.append('%s: 组成回答应为组分列表，或含 composition 与 basis 的 JSON 对象。'
+                                    % question_id)
+                    continue
+            if isinstance(answer, list):
+                merged['feed_composition'] = answer
+            elif isinstance(answer, dict) and isinstance(answer.get('composition'), list):
+                merged['feed_composition'] = answer['composition']
+                if answer.get('basis'):
+                    merged['composition_basis'] = answer['basis']
             continue
         if question_id == 'q-conversion-basis' and isinstance(answer, str):
             merged['conversion_basis'] = answer

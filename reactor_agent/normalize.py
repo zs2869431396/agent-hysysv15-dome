@@ -27,6 +27,8 @@ was changed rather than presenting a normalised value as if the user had written
 """
 from __future__ import annotations
 
+import json
+import re
 import zlib
 from dataclasses import dataclass, field
 from typing import Any
@@ -222,8 +224,30 @@ COMPOSITION_BASES = {
 }
 
 
+def _slurry_composition_default(source_text: str) -> dict[str, Any] | None:
+    """A narrowly stated binary coal-water slurry, never a guessed coal analysis.
+
+    Its concentration fixes the coal/water mass split; representing the coal as
+    Carbon still needs the separate compiler confirmation. Multiple concentrations
+    or explicitly named additives must be clarified instead of collapsed.
+    """
+    if any(word in source_text for word in ('添加', '助剂', '添加剂', '多股', '两股')):
+        return None
+    matches = re.findall(
+        r'水煤浆\s*(?:进料)?\s*(?:质量)?浓度\s*(?:为|是|[:：=])?\s*'
+        r'(\d+(?:\.\d+)?)\s*(?:wt\s*%|质量百分比|质量%)',
+        source_text, flags=re.IGNORECASE)
+    if len(matches) != 1 or not 0 < float(matches[0]) < 100:
+        return None
+    coal = float(matches[0])
+    return {'composition': [{'name': '煤炭', 'fraction': coal},
+                            {'name': '水', 'fraction': 100 - coal}],
+            'basis': 'mass_fraction'}
+
+
 def _feed_composition(facts: dict[str, Any], report: 'NormalizationReport',
-                      fallback_basis: str) -> tuple[str, dict[str, float]]:
+                      fallback_basis: str,
+                      source_text: str = '') -> tuple[str, dict[str, float]]:
     """Return (spec basis, fractions summing to 1).
 
     The model is told to copy numbers as written, so a 1:2.7 molar ratio arrives as
@@ -239,19 +263,33 @@ def _feed_composition(facts: dict[str, Any], report: 'NormalizationReport',
     basis = COMPOSITION_BASES.get(stated_basis, fallback_basis)
 
     raw: dict[str, float] = {}
+    unknown: list[str] = []
     for entry in entries:
         name = resolve_species(entry.get('name'))
         if name is None:
-            report.questions.append(Question(
-                id='q-composition-species-%s'
-                   % _stable_id(str(entry.get('name'))),
-                field='feeds[0].fractions', blocking=True,
-                question='进料组成中的 %r 无法对应到 HYSYS 库组分，请确认它的标准名称。'
-                         % str(entry.get('name')),
-                reason='组成中的未知组分会让进料无法建立。'))
+            unknown.append(str(entry.get('name')))
             continue
         value = entry.get('fraction')
         raw[name] = float(value) if value is not None else 1.0
+
+    default = _slurry_composition_default(source_text)
+    total = sum(abs(value) for value in raw.values())
+    slurry_mismatch = default is not None and (
+        basis != 'mass_fraction' or set(raw) != {'Carbon', 'Water'} or
+        total <= 0 or abs(raw.get('Carbon', 0) / total -
+                          default['composition'][0]['fraction'] / 100) > 1e-6)
+    if unknown or slurry_mismatch:
+        reason = ('组成中的名称无法解析：%s。' % '、'.join(unknown)) if unknown else ''
+        if slurry_mismatch:
+            reason += '水煤浆浓度描述煤的质量百分比；提取的组成或基准与原文不符。'
+        report.questions.append(Question(
+            id='q-feed-composition', field='feeds[0].fractions', blocking=True,
+            question='请确认完整的进料组成：逐个给出标准组分名称、比例及质量或摩尔基准。',
+            reason=reason, default=(json.dumps(default, ensure_ascii=False)
+                                    if default else None)))
+        # Never compile the surviving subset of an unreadable mixture, or an
+        # inverted concentration, as though it were a complete feed.
+        return basis, {}
 
     if not raw:
         return basis, {}
@@ -772,7 +810,7 @@ def normalize(facts: dict[str, Any], source_text: str, *,
             thermal_mode='isothermal', source_text=source_text[:200]))
 
     composition_basis, fractions = _feed_composition(
-        facts, report, feed_basis or 'molar_fraction')
+        facts, report, feed_basis or 'molar_fraction', source_text)
 
     if total_flow is None and fractions and flow_is_ours_to_choose(source_text):
         # The user delegated the flow. Choose one at a defensible scale, anchored on
@@ -804,7 +842,8 @@ def normalize(facts: dict[str, Any], source_text: str, *,
                       'as an assumption' % (round(total_flow, 6), principal,
                                             DEFAULT_PRINCIPAL_KMOL_H))
 
-    if not fractions:
+    if not fractions and not any(q.field == 'feeds[0].fractions'
+                                 for q in report.questions):
         report.questions.append(Question(
             id='q-feed-composition', field='feeds[0].fractions', blocking=True,
             question='进料组成（各组分及其比例）是什么？',
