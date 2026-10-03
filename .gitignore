@@ -51,3 +51,7 @@ packages/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# ---- 检查点汇报素材（不进仓库）----
+_review/
+

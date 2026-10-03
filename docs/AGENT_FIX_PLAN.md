@@ -4,7 +4,7 @@
 
 ## 背景、目标与交付物
 
-本计划把 `reactor_agent/` 同步到已验收的工具层 `2026-10-03-equilibrium-integration-1`，并修复审查发现的智能体缺陷；`hysys_tools/` 一个字节都不改。按步骤 0 到 12 顺序执行，每步结束跑测试并提交。
+本计划把 `reactor_agent/` 同步到已验收的工具层 `2026-10-03-equilibrium-integration-1`，并修复审查发现的智能体缺陷；`hysys_tools/` 一个字节都不改。按步骤 0 到 13 顺序执行，每步结束跑测试并提交。步骤 13（网页界面）在步骤 12 和检查点 C 之后再做。
 
 **输入**
 
@@ -47,6 +47,7 @@
 - 修改后的 `reactor_agent/`，以及新增的 `reactor_agent/report.py`。
 - 更新后的测试，Agent 层与工具层全部通过。
 - 更新后的 `README.md`、`Run-Agent-On-Workstation.cmd`，以及新增的 `docs/tool-acceptance-20261003-105341.json`。
+- 本机中文网页界面 `python -m reactor_agent.web`（步骤 13），凭据在页面上运行时填写。
 - 一个用 `scripts/build_submission.py` 打出的提交包。
 
 **不在范围内**：修改 `hysys_tools/`、实现 CSTR/PFR、改动模型提示词与 `llm.py`。
@@ -743,6 +744,72 @@ grep -rn "拒绝\|refuse\|BLOCKED\|FixedK\|Ln(K)\|unsupported\|experimental\|--g
 
 **12.5 打包**：`python scripts\prepare_git.py` 通过后，运行 `python scripts\build_submission.py`，确认生成的 ZIP 里有 `reactor_agent/report.py` 和 `docs/tool-acceptance-20261003-105341.json`。
 
+## 步骤 13：中文网页界面与运行时填写凭据（PROJECT_PLAN 的 P1-F）
+
+在本机浏览器里完成“填模型连接 → 输入需求 → 回答追问 → 看结果”，不需要命令行。凭据只在运行时填写，**不写进代码，也不进入任何会提交或打包的文件**。这一条是 `TECH_STACK.md` 里已经记录的项目要求，原因是 AI 对话记录和仓库都要交付，key 一旦进入提交历史，之后删掉也会留在历史里。
+
+**13.1 技术约束**
+
+- 只用标准库 `http.server.ThreadingHTTPServer`，页面是一个内联 CSS/JS 的 HTML 文件，不引入新依赖（执行规则 7）。
+- 只监听 `127.0.0.1`，默认端口 8765，可用 `--port` 修改。启动命令 `python -m reactor_agent.web`，另加双击入口 `Run-Agent-UI.cmd`。
+- 新文件：`reactor_agent/web.py`（服务端）、`reactor_agent/web_static/index.html`（页面）、`reactor_agent/test_web.py`（测试）。
+
+**13.2 凭据规则（必须全部满足）**
+
+1. 页面“模型连接”区有三个输入框：地址、模型名、Key。Key 用 `type="password"`。
+2. 启动时读取环境变量 `TR_BASE`、`TR_MODEL`、`TR_KEY`。地址和模型名预填到页面；Key 不回传，只显示“已设置”或“未设置”。
+3. 测试时如果不想每次输入，可以在**项目根目录**放一个 `.env` 文件，写 `TR_KEY=...` 等行。程序只读不写，用标准库逐行解析 `KEY=VALUE`。`.env` 已在 `.gitignore` 里；它不在 `build_submission.py` 的打包清单里，打包时不会带上。不要把 `.env` 放进 `reactor_agent/` 等会被整目录打包的文件夹。
+4. 优先级：页面填写 > 环境变量 > `.env`。
+5. 页面填入的 Key 只保存在服务进程内存里，进程退出即丢失。不写入检查点、`state.json`、`explanation.txt`、日志、错误信息，也不写入浏览器 `localStorage`。
+6. `GET /api/settings` 只返回 `{base, model, key_set}`，任何接口的响应都不包含 key。
+7. 代码和测试里不得出现真实 key；测试一律用假 transport，不需要 key。提交前 `python scripts\prepare_git.py` 的凭据扫描必须通过。
+
+**13.3 页面功能**
+
+1. **需求输入**：场景下拉框（甲苯、重整、气化、自定义）。选中内置场景时，把题目原文填进文本框，可以再编辑。
+2. **运行方式**：默认 dry run。选“真实执行 HYSYS”时，必须勾选“工作站已打开 HYSYS 且没有其他模拟在运行”。
+3. **追问区**：暂停时逐题显示问题、原因，默认答案预填在输入框里，用户可改可直接提交。提交后继续运行，同一问题不再出现。
+4. **结果区**：
+    - 选型结论和理由，理论选型与实际执行不同时写明原因。
+    - 假设分三组显示：本系统选定、用户确认、推导所得。
+    - 工况对比表与温度趋势解读。
+    - 气化的 CO 收率放在醒目位置，旁边是碳转化率和氧平衡上限。
+    - 校验结果和工具层提示。
+    - 报告全文。
+    - 下载 `spec-*.json`、`explanation.txt`、`state.json` 的链接。
+5. **状态栏**：显示 `WAITING_INPUT`、`READY`、`RUNNING`、`PASS`、`PARTIAL`、`FAILED`、`UNSUPPORTED`。
+
+**13.4 服务端接口**
+
+| 接口 | 作用 |
+| --- | --- |
+| `POST /api/settings` | 接收 `{base, model, key}`，存进内存，返回 `{key_set}` |
+| `GET /api/settings` | 返回 `{base, model, key_set}` |
+| `POST /api/run` | 接收 `{scenario, text, execute}`，新建运行目录和 thread_id，用与 CLI 相同的 `build_graph` 开始运行，返回 `{run_id, status, questions 或 report}` |
+| `POST /api/answer` | 接收 `{run_id, answers}`，以 `Command(resume=answers)` 继续 |
+| `GET /api/run/<run_id>` | 只读当前状态。刷新页面不会重新计算，也不会再次调用模型 |
+| `GET /api/run/<run_id>/files/<name>` | 只允许下载该运行目录内白名单里的文件，拒绝 `..`、绝对路径和其他文件 |
+
+- 运行目录与 CLI 相同，都在 `agent-runs/` 下；场景表复用 `__main__.SCENARIOS`，作答循环复用步骤 10 的逻辑。
+- 同一时间只允许一个真实执行，另一个执行请求返回“工作站忙”；dry run 不受限制。
+- 模型调用失败时，在页面显示明确的错误，并给出已经算出的数值（如果有），不猜结果。
+
+**13.5 测试（`reactor_agent/test_web.py`，不联网、不连 HYSYS）**
+
+- `POST /api/settings` 设置一个假 key 后，`GET /api/settings`、任意运行的响应、运行目录里的所有文件、检查点文件中都找不到这个字符串。
+- 用假客户端运行气化：第一次返回两个问题且都带默认答案；用默认答案作答后状态为 `READY`。
+- 连续两次 `GET /api/run/<run_id>`，假 transport 的调用次数不增加。
+- 下载接口拒绝 `../`、绝对路径和白名单以外的文件名。
+- 服务只绑定 `127.0.0.1`。
+- `.env` 解析：忽略空行和 `#` 注释，值两侧的引号被去掉。
+
+**13.6 文档**
+
+- `README.md` 新增“网页界面”一节：启动方式、凭据填写方式、`.env` 的用法和注意事项。
+- `docs/REVIEW_BRIEF.md` 第 5 节“没有图形界面”一行改为“有本机网页界面（`python -m reactor_agent.web`），只监听 127.0.0.1”；第 4 节第 8 条“凭据是否真的不会落盘”补上相关测试 `test_web.py`。
+- `Run-Agent-On-Workstation.cmd` 保持命令行流程不变，作为主要的验收证据；网页界面用于录屏演示。
+- `scripts/run-all-tests.cmd` 加入 `reactor_agent.test_web`，编号改为 `[n/14]`；`docs/REVIEW_BRIEF.md` 第 3 节的“13 个套件”相应改为 14。
+
 ## 离线验收标准
 
 下面每一项都满足，才算本地这一轮完成；任何一项不满足都不要打包交付。
@@ -766,6 +833,8 @@ grep -rn "拒绝\|refuse\|BLOCKED\|FixedK\|Ln(K)\|unsupported\|experimental\|--g
 - [ ] 用 `--accept-defaults` 生成的气化 spec 与 `hysys-tool-layer.zip` 里的 `specs/coal-slurry-gasification.json` 对比，下列字段相同：组分集合、进料组成与基准、`total_flow`、`flow_input`、两个标准状态、反应器 `kind`、`thermal_mode`、`outlet_temperature`、`solid_carbon`。
 - [ ] 重整 spec 与 `specs/methane-steam-reforming-710C.json` 对比：反应器 `kind`、两个反应的计量系数与 `phase`、出口温度相同；进料按摩尔分数加总流量表示，换算后甲烷 1000、水 2700 kmol/h。
 - [ ] `docs/AGENT_FIX_NOTES.md` 已写好，记录了偏离计划的地方。
+- [ ] 网页界面：`python -m reactor_agent.web` 能在 `http://127.0.0.1:8765` 打开；用页面填 key 跑一次气化 dry run，两题采用默认答案后得到 READY。
+- [ ] 凭据：在仓库里搜索你实际使用的 key 前若干位，除被忽略的 `.env` 外没有任何命中；`python scripts\prepare_git.py` 通过；提交包里没有 `.env`。
 
 ## 工作站端到端验收（由你执行）
 
