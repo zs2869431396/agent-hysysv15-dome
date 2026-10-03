@@ -25,7 +25,7 @@ if errorlevel 1 set "FAILED=1"
 echo.
 
 echo [4/14] fact extraction and grounding
-python -m unittest reactor_agent.test_extraction reactor_agent.test_live_intake reactor_agent.test_remote_regressions
+python -m unittest reactor_agent.test_extraction reactor_agent.test_live_intake reactor_agent.test_remote_regressions reactor_agent.test_line_endings
 if errorlevel 1 set "FAILED=1"
 echo.
 

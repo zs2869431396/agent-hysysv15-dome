@@ -1,2 +1,4 @@
-# Accepted runtime hashes are for LF bytes. Windows checkouts must preserve them.
+# Preserve each accepted runtime file's line endings on Windows checkouts.
 *.py text eol=lf
+# This accepted file uses CRLF; its Git blob is normalized to LF.
+hysys_tools/main.py text eol=crlf

@@ -34,9 +34,13 @@ python -c "from reactor_agent.capabilities import acceptance_state; print(accept
 The local tool files still match the accepted hashes. The workstation's experimental
 label needs the above diagnostic: it cannot be proven from the terminal error alone.
 Windows Git may convert LF to CRLF during checkout, invalidating raw-byte hashes
-without changing Python semantics. `.gitattributes` now fixes Python source to LF
-to prevent this on new checkouts; existing files may need separate correction after
-the mismatch list is confirmed. No capability is forcibly marked verified.
+without changing Python semantics. The acceptance uses LF for twelve runtime files
+and CRLF for `hysys_tools/main.py`. `.gitattributes` preserves both conventions on
+new checkouts. Existing checkouts can run
+`python scripts/restore_accepted_line_endings.py --apply`: it checks all candidate
+bytes against the accepted hashes before writing anything, preserves files already
+matching the acceptance, and stops if any difference is beyond line endings. No
+capability is forcibly marked verified.
 
 After the offline reproduction passes, the toluene command can be retried on the
 workstation. Only a real successful execution establishes end-to-end acceptance.
