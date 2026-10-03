@@ -1,0 +1,59 @@
+{
+  "schema": "hysys-agent/spec/1",
+  "case_name": "agent-gasification-saturation",
+  "scenario": "coal_slurry_gasification",
+  "fluid_package": {
+    "name": "GAS-PR",
+    "property_package": "PengRob",
+    "components": [
+      "Carbon",
+      "Water",
+      "CO",
+      "Hydrogen",
+      "CO2",
+      "Methane"
+    ]
+  },
+  "feeds": [
+    {
+      "name": "SLURRY",
+      "basis": "mass_fraction",
+      "fractions": {
+        "Carbon": 0.62,
+        "Water": 0.38
+      },
+      "total_flow": 80000.0,
+      "total_flow_unit": "Nm3/h",
+      "temperature": 40.0,
+      "temperature_unit": "C",
+      "pressure": 40.0,
+      "pressure_unit": "bar",
+      "flow_input": "normal_volume",
+      "standard_temperature_C": 0.0,
+      "standard_pressure_kPa": 101.325
+    }
+  ],
+  "reactions": [],
+  "reactor": {
+    "name": "GASIFIER",
+    "kind": "gibbs",
+    "thermal_mode": "isothermal",
+    "outlet_temperature": 1400.0,
+    "outlet_temperature_unit": "C",
+    "pressure_drop_kPa": 0.0,
+    "solid_carbon": "saturation"
+  },
+  "assumptions": [
+    "Slurry at 62 wt% coal, 40 C, 40 bar absolute, outlet 1400 C.",
+    "Ash is neglected as the exam asks.",
+    "Examiner clarified: 80000 Nm3/h is the total of the single mixed inlet, at 0 C / 101.325 kPa.",
+    "Coal is modelled as pure solid carbon (modelling assumption, not implied by neglecting ash).",
+    "The normal volume is converted on the stated basis (22.41397 m3/kmol) and handed to HYSYS as kgmole/h. HYSYS's own standard gas basis here measured 15 C, so a HYSYS volume unit would have applied a 5.2% different basis silently.",
+    "HYSYS V15 library Carbon carries the Gibbs data of gaseous atomic carbon (+671.28 kJ/mol at 298.15 K against the textbook +671.3; graphite is 0 by definition) while its enthalpy data is graphite's. A plain Gibbs reactor would therefore return an impossible outlet; it is not used.",
+    "Graphite saturation is imposed instead: a conversion reactor converts a fraction X of the carbon by the bookkeeping reaction 3C + 2H2O -> 2CO + CH4, a gas-only Gibbs reactor re-equilibrates CO/CO2/H2/H2O/CH4 with HYSYS's own gas data, and X is solved so that the gas carbon activity is exactly 1. The bookkeeping reaction does not affect the result; the reported duty is the sum of both reactors."
+  ],
+  "open_questions": [
+    "The exam provides no oxygen feed. Holding 1400 C therefore means an externally heated model with a reported duty, not autothermal gasification."
+  ],
+  "blocking_questions": []
+}

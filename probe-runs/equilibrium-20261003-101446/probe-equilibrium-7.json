@@ -1,0 +1,2302 @@
+{
+  "probe": "equilibrium-7",
+  "started": "2026-10-03T10:14:46",
+  "phase1_applied": true,
+  "temperatures": {
+    "710": {
+      "temperature_C": 710.0,
+      "attempts": [
+        {
+          "strategy": "gibbs_source",
+          "path": "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261003-120003-a6a1d6\\probe-runs\\equilibrium-20261003-101446\\710C\\00-gibbs_source.hsc",
+          "k_unit_assumed": "bar",
+          "builder_log": [
+            {
+              "step": "configure_basis",
+              "status": "OK",
+              "detail": {
+                "property_package_requested": "PengRob",
+                "property_package_readback": "Peng-Robinson",
+                "components_readback": [
+                  "Methane",
+                  "H2O",
+                  "CO",
+                  "Hydrogen",
+                  "CO2"
+                ],
+                "basis_still_being_edited": true,
+                "case_ownership_established": true
+              }
+            }
+          ],
+          "reactions": [
+            {
+              "reaction": "SMR-EQ",
+              "reactants": [
+                {
+                  "requested": "Methane",
+                  "used": "Methane",
+                  "coefficient": -1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "Water",
+                  "used": "H2O",
+                  "coefficient": -1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "CO",
+                  "used": "CO",
+                  "coefficient": 1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "Hydrogen",
+                  "used": "Hydrogen",
+                  "coefficient": 3.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                }
+              ],
+              "initial_lnk_source": 2,
+              "basis": 2,
+              "basis_units": "bar",
+              "reaction_phase": 0,
+              "apply": {
+                "strategy": "gibbs_source",
+                "unit": "bar",
+                "source": {
+                  "write": 0,
+                  "readback": 2,
+                  "stuck": false
+                },
+                "took_effect": false,
+                "k_written": null
+              },
+              "k_target": 15.315883490179253
+            }
+          ],
+          "status": "NOT_APPLIED",
+          "close": {
+            "call": "close_saved_case",
+            "case_name_readback": "Case",
+            "case_count_before": 1,
+            "method": "case.Close(SaveChanges=False)",
+            "result": "OK",
+            "case_count_after": 0,
+            "case_count_change": 1
+          },
+          "gibbs_source_value": 0
+        },
+        {
+          "strategy": "lnk_equation_array",
+          "path": "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261003-120003-a6a1d6\\probe-runs\\equilibrium-20261003-101446\\710C\\01-lnk_equation_array.hsc",
+          "k_unit_assumed": "bar",
+          "builder_log": [
+            {
+              "step": "configure_basis",
+              "status": "OK",
+              "detail": {
+                "property_package_requested": "PengRob",
+                "property_package_readback": "Peng-Robinson",
+                "components_readback": [
+                  "Methane",
+                  "H2O",
+                  "CO",
+                  "Hydrogen",
+                  "CO2"
+                ],
+                "basis_still_being_edited": true,
+                "case_ownership_established": true
+              }
+            },
+            {
+              "step": "end_basis_change",
+              "status": "OK",
+              "detail": {
+                "is_changing_basis": false
+              }
+            },
+            {
+              "step": "create_streams_and_reactor",
+              "status": "OK",
+              "detail": {
+                "reactor_kind": "equilibrium",
+                "reactor_type_name": "equilibriumreactorop",
+                "feed_molar_flows_kmol_h": {
+                  "Methane": 1000.0,
+                  "Water": 2700.0
+                },
+                "feed_total_kmol_h": 3700.0,
+                "feed_flow_basis": "molar_flow",
+                "native_flow_readback": null,
+                "hysys_molar_flow_kmol_h": 3699.9999999999995,
+                "hysys_mass_flow_kg_h": 64683.67137908934,
+                "thermal_mode": "isothermal",
+                "outlet_temperature_C": 710.0,
+                "connections": [
+                  {
+                    "call": "feed_state_before_attach",
+                    "fraction_sum": 1.0,
+                    "fractions_finite": true,
+                    "temperature_is_known": true,
+                    "pressure_is_known": true,
+                    "molar_flow_is_known": true,
+                    "temperature_C": 520.0,
+                    "pressure_kPa": 1350.0,
+                    "molar_flow_kmol_h": 3699.9999999999995,
+                    "result": "OK"
+                  },
+                  {
+                    "call": "hold_ignored",
+                    "result": "OK",
+                    "value": true
+                  },
+                  {
+                    "call": "set_reaction_set",
+                    "result": "OK",
+                    "value": "AGENT-EQ-SET"
+                  },
+                  {
+                    "call": "feeds_add",
+                    "result": "OK",
+                    "value": 1
+                  },
+                  {
+                    "call": "set_vapour_product",
+                    "result": "OK",
+                    "value": "VAPOUR"
+                  },
+                  {
+                    "call": "set_liquid_product",
+                    "result": "OK",
+                    "value": "LIQUID"
+                  },
+                  {
+                    "call": "set_energy_stream",
+                    "result": "OK",
+                    "value": "DUTY"
+                  },
+                  {
+                    "call": "set_pressure_drop",
+                    "result": "OK",
+                    "value": 0.0
+                  },
+                  {
+                    "call": "set_outlet_temperature",
+                    "result": "OK",
+                    "value": 710.0
+                  }
+                ]
+              }
+            },
+            {
+              "step": "release_ignored_before_solve",
+              "status": "OK",
+              "detail": {
+                "call": "release_ignored",
+                "result": "OK",
+                "value": false
+              }
+            },
+            {
+              "step": "solve_and_read_outputs",
+              "status": "OK",
+              "detail": {
+                "component_flows_kmol_h": {
+                  "Methane": 458.3307823497494,
+                  "H2O": 1835.8113006134076,
+                  "CO": 219.1502095387436,
+                  "Hydrogen": 1947.5280575845047,
+                  "CO2": 322.5191679687435
+                },
+                "heat_duty_kW": 40062.98638853786,
+                "solver_is_solving": false,
+                "solver_evidence": {
+                  "stable_reads": 3,
+                  "required_stable_reads": 3,
+                  "polls": 3,
+                  "absolute_stability_tolerance": 1e-09,
+                  "checks": "phase flows, composition, temperature, pressure, mass flow, duty",
+                  "note": "Stable readback and idle solver; not an independent proof of thermodynamic equilibrium."
+                }
+              }
+            }
+          ],
+          "reactions": [
+            {
+              "reaction": "SMR-EQ",
+              "reactants": [
+                {
+                  "requested": "Methane",
+                  "used": "Methane",
+                  "coefficient": -1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "Water",
+                  "used": "H2O",
+                  "coefficient": -1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "CO",
+                  "used": "CO",
+                  "coefficient": 1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "Hydrogen",
+                  "used": "Hydrogen",
+                  "coefficient": 3.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                }
+              ],
+              "initial_lnk_source": 2,
+              "basis": 2,
+              "basis_units": "bar",
+              "reaction_phase": 0,
+              "apply": {
+                "strategy": "lnk_equation_array",
+                "unit": "bar",
+                "coefficients": [
+                  7.220544212153779,
+                  -23585.26615940764,
+                  2.829644973857468,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "lnk_at_T_from_fit": 2.7294643800827174,
+                "lnk_at_T_exact": 2.728890426520252,
+                "source": {
+                  "write": 1,
+                  "readback": 1,
+                  "stuck": true
+                },
+                "write": {
+                  "property": "EquilibriumConstantParameterArrayValue",
+                  "target": [
+                    7.220544212153779,
+                    -23585.26615940764,
+                    2.829644973857468,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "how": "VARIANT",
+                  "readback": [
+                    7.220544212153779,
+                    -23585.26615940764,
+                    2.829644973857468,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "took_effect": true
+                },
+                "took_effect": true,
+                "k_written": 15.324676619253239
+              },
+              "k_target": 15.315883490179253
+            },
+            {
+              "reaction": "WGS-EQ",
+              "reactants": [
+                {
+                  "requested": "CO",
+                  "used": "CO",
+                  "coefficient": -1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "Water",
+                  "used": "H2O",
+                  "coefficient": -1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "CO2",
+                  "used": "CO2",
+                  "coefficient": 1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "Hydrogen",
+                  "used": "Hydrogen",
+                  "coefficient": 1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                }
+              ],
+              "initial_lnk_source": 2,
+              "basis": 2,
+              "basis_units": "bar",
+              "reaction_phase": 0,
+              "apply": {
+                "strategy": "lnk_equation_array",
+                "unit": "bar",
+                "coefficients": [
+                  -12.679152220171678,
+                  5420.7226522255,
+                  1.1045229627843762,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "lnk_at_T_from_fit": 0.4454795831858984,
+                "lnk_at_T_exact": 0.4452555462857638,
+                "source": {
+                  "write": 1,
+                  "readback": 1,
+                  "stuck": true
+                },
+                "write": {
+                  "property": "EquilibriumConstantParameterArrayValue",
+                  "target": [
+                    -12.679152220171678,
+                    5420.7226522255,
+                    1.1045229627843762,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "how": "VARIANT",
+                  "readback": [
+                    -12.679152220171678,
+                    5420.7226522255,
+                    1.1045229627843762,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "took_effect": true
+                },
+                "took_effect": true,
+                "k_written": 1.5612387601774367
+              },
+              "k_target": 1.5608890242635742
+            }
+          ],
+          "after_basis": [
+            {
+              "reaction": "SMR-EQ",
+              "lnk_source": 1,
+              "readable": {
+                "KEqValue": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "KEq": {
+                  "object": "CDispatch"
+                },
+                "EquilibriumConstant": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "EquilibriumConstantParameterArrayValue": [
+                  7.220544212153779,
+                  -23585.26615940764,
+                  2.829644973857468,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "EquilibriumConstantParameterArray": {
+                  "object": "CDispatch",
+                  "Values": [
+                    7.220544212153779,
+                    -23585.26615940764,
+                    2.829644973857468,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "LnKEquationAParameter": 7.220544212153779,
+                "LnKEquationBParameter": -23585.26615940764,
+                "LnKEquationCParameter": 2.829644973857468,
+                "LnKEquationDParameter": 0.0
+              }
+            },
+            {
+              "reaction": "WGS-EQ",
+              "lnk_source": 1,
+              "readable": {
+                "KEqValue": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "KEq": {
+                  "object": "CDispatch"
+                },
+                "EquilibriumConstant": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "EquilibriumConstantParameterArrayValue": [
+                  -12.679152220171678,
+                  5420.7226522255,
+                  1.1045229627843762,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "EquilibriumConstantParameterArray": {
+                  "object": "CDispatch",
+                  "Values": [
+                    -12.679152220171678,
+                    5420.7226522255,
+                    1.1045229627843762,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "LnKEquationAParameter": -12.679152220171678,
+                "LnKEquationBParameter": 5420.7226522255,
+                "LnKEquationCParameter": 1.1045229627843762,
+                "LnKEquationDParameter": 0.0
+              }
+            }
+          ],
+          "solved": {
+            "component_flows_kmol_h": {
+              "Methane": 458.3307823497494,
+              "H2O": 1835.8113006134076,
+              "CO": 219.1502095387436,
+              "Hydrogen": 1947.5280575845047,
+              "CO2": 322.5191679687435
+            },
+            "heat_duty_kW": 40062.98638853786,
+            "outlet": {
+              "VAPOUR": {
+                "molar_flow_kmol_h": 4783.339518055149,
+                "temperature_C": 710.0,
+                "pressure_kPa": 1350.0,
+                "mass_flow_kg_h": 64684.06340576283,
+                "mole_fractions": {
+                  "Methane": 0.09581815813402714,
+                  "H2O": 0.3837928070303125,
+                  "CO": 0.0458153155784868,
+                  "Hydrogen": 0.407148196408259,
+                  "CO2": 0.06742552284891458
+                }
+              },
+              "LIQUID": {
+                "molar_flow_kmol_h": 0.0
+              }
+            }
+          },
+          "after_solve": [
+            {
+              "reaction": "SMR-EQ",
+              "readable": {
+                "KEqValue": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "KEq": {
+                  "object": "CDispatch"
+                },
+                "EquilibriumConstant": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "EquilibriumConstantParameterArrayValue": [
+                  7.220544212153779,
+                  -23585.26615940764,
+                  2.829644973857468,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "EquilibriumConstantParameterArray": {
+                  "object": "CDispatch",
+                  "Values": [
+                    7.220544212153779,
+                    -23585.26615940764,
+                    2.829644973857468,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "LnKEquationAParameter": 7.220544212153779,
+                "LnKEquationBParameter": -23585.26615940764,
+                "LnKEquationCParameter": 2.829644973857468,
+                "LnKEquationDParameter": 0.0
+              }
+            },
+            {
+              "reaction": "WGS-EQ",
+              "readable": {
+                "KEqValue": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "KEq": {
+                  "object": "CDispatch"
+                },
+                "EquilibriumConstant": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "EquilibriumConstantParameterArrayValue": [
+                  -12.679152220171678,
+                  5420.7226522255,
+                  1.1045229627843762,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "EquilibriumConstantParameterArray": {
+                  "object": "CDispatch",
+                  "Values": [
+                    -12.679152220171678,
+                    5420.7226522255,
+                    1.1045229627843762,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "LnKEquationAParameter": -12.679152220171678,
+                "LnKEquationBParameter": 5420.7226522255,
+                "LnKEquationCParameter": 1.1045229627843762,
+                "LnKEquationDParameter": 0.0
+              }
+            }
+          ],
+          "flows_internal": {
+            "methane": 458.3307823497494,
+            "water": 1835.8113006134076,
+            "carbon monoxide": 219.1502095387436,
+            "hydrogen": 1947.5280575845047,
+            "carbon dioxide": 322.5191679687435
+          },
+          "quotients": {
+            "SMR-EQ": {
+              "bar": 15.32466945633744,
+              "kPa": 153246.69456337442,
+              "atm": 14.926496759133139,
+              "Pa": 153246694563.37442,
+              "MPa": 0.15324669456337442,
+              "psi": 3223.689105082134
+            },
+            "WGS-EQ": 1.5612387601774382
+          },
+          "inlet": {
+            "methane": 1000.0,
+            "water": 2700.0
+          },
+          "status": "SOLVED",
+          "quotient_check": {
+            "SMR-EQ": {
+              "Q": 15.32466945633744,
+              "K": 15.315883490179253,
+              "ln_ratio": 0.0005734861517886202
+            },
+            "smr_unit_matching_the_number_written": "bar",
+            "WGS-EQ": {
+              "Q": 1.5612387601774382,
+              "K": 1.5608890242635742,
+              "ln_ratio": 0.00022403690013571317
+            },
+            "k_honoured": true,
+            "wgs_honoured": true
+          }
+        }
+      ],
+      "constants": {
+        "SMR-EQ": {
+          "dG_J_per_mol": -22091.7453677023,
+          "K_atm": 14.917939074038546,
+          "dn": 2
+        },
+        "WGS-EQ": {
+          "dG_J_per_mol": -3639.6808740235574,
+          "K_atm": 1.5608890242635742,
+          "dn": 0
+        }
+      },
+      "final_strategy": "lnk_equation_array",
+      "k_unit": "bar",
+      "comparison_with_gibbs": {
+        "components": {
+          "methane": {
+            "equilibrium": 458.3307823497494,
+            "gibbs": 459.6419070577383,
+            "difference": -1.3111247079888813,
+            "within": true
+          },
+          "water": {
+            "equilibrium": 1835.8113006134076,
+            "gibbs": 1837.9038653315165,
+            "difference": -2.0925647181088607,
+            "within": true
+          },
+          "carbon monoxide": {
+            "equilibrium": 219.1502095387436,
+            "gibbs": 218.6200512160405,
+            "difference": 0.5301583227031017,
+            "within": true
+          },
+          "hydrogen": {
+            "equilibrium": 1947.5280575845047,
+            "gibbs": 1942.8123205530023,
+            "difference": 4.715737031502385,
+            "within": true
+          },
+          "carbon dioxide": {
+            "equilibrium": 322.5191679687435,
+            "gibbs": 321.7380417262208,
+            "difference": 0.7811262425227028,
+            "within": true
+          }
+        },
+        "methane_conversion_percent": {
+          "equilibrium": 54.166921765025066,
+          "gibbs": 54.03580929422617,
+          "difference_pp": 0.13111247079889665
+        },
+        "duty_kW": {
+          "equilibrium": 40062.98638853786,
+          "gibbs": 39988.61475671525,
+          "relative": 0.001859820158189347
+        },
+        "matches_gibbs": true
+      },
+      "checks": {
+        "element_relative_error": {
+          "C": 1.59857236e-07,
+          "H": 1.96361151e-07,
+          "O": -5.7003838e-08
+        },
+        "worst_element_relative_error": 1.963611513464786e-07,
+        "inlet_mass_kg_h": 64683.5,
+        "outlet_mass_kg_h": 64683.501318194576,
+        "mass_relative_error": 2.0379147325287443e-08,
+        "specified_conversion": [],
+        "reactant_conversion_percent": {
+          "methane": 54.166921765025066,
+          "water": 32.00698886617009
+        },
+        "co_yield": {
+          "definition": "(n_CO_out - n_CO_in) / n_C_feed * 100%",
+          "co_produced_kmol_h": 219.1502095387436,
+          "carbon_fed_kmol_h": 1000.0,
+          "co_yield_percent": 21.91502095387436,
+          "total_carbon_out_kmol_h": 1000.0001598572366,
+          "total_outlet_kmol_h": 4783.339518055149,
+          "water_outlet_kmol_h": 1835.8113006134076,
+          "dry_outlet_kmol_h": 2947.528217441741,
+          "co_mole_fraction_dry": 0.07435050434528204,
+          "note": "CO yield, carbon conversion and CO mole fraction are three different quantities and are reported separately. The mole fraction is on a dry basis: water and any unreacted solid carbon are excluded from the denominator.",
+          "solid_carbon_fed_kmol_h": 0.0,
+          "carbon_conversion_percent": null,
+          "carbon_conversion_note": "No solid carbon enters this case, so a carbon conversion is not defined here. Use reactant_conversion_percent for the key conversion; a carbon conversion of 100% would be meaningless."
+        },
+        "heat_duty_kW": 40062.98638853786,
+        "heat_duty_scope": "External heat needed to hold the stated outlet temperature. For an isothermal case this includes sensible heating of the feed from its inlet temperature to the outlet temperature as well as the heat of reaction, so it is the reactor duty, not the heat of reaction alone."
+      },
+      "saved_case": "agent-smr-eq-710C.hsc",
+      "close": {
+        "call": "close_saved_case",
+        "case_name_readback": "Case",
+        "case_count_before": 1,
+        "method": "case.Close(SaveChanges=False)",
+        "result": "OK",
+        "case_count_after": 0,
+        "case_count_change": 1
+      },
+      "decision": "EQUILIBRIUM_CONFIRMED"
+    },
+    "600": {
+      "temperature_C": 600.0,
+      "attempts": [
+        {
+          "strategy": "lnk_equation_array",
+          "path": "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261003-120003-a6a1d6\\probe-runs\\equilibrium-20261003-101446\\600C\\00-lnk_equation_array.hsc",
+          "k_unit_assumed": "bar",
+          "builder_log": [
+            {
+              "step": "configure_basis",
+              "status": "OK",
+              "detail": {
+                "property_package_requested": "PengRob",
+                "property_package_readback": "Peng-Robinson",
+                "components_readback": [
+                  "Methane",
+                  "H2O",
+                  "CO",
+                  "Hydrogen",
+                  "CO2"
+                ],
+                "basis_still_being_edited": true,
+                "case_ownership_established": true
+              }
+            },
+            {
+              "step": "end_basis_change",
+              "status": "OK",
+              "detail": {
+                "is_changing_basis": false
+              }
+            },
+            {
+              "step": "create_streams_and_reactor",
+              "status": "OK",
+              "detail": {
+                "reactor_kind": "equilibrium",
+                "reactor_type_name": "equilibriumreactorop",
+                "feed_molar_flows_kmol_h": {
+                  "Methane": 1000.0,
+                  "Water": 2700.0
+                },
+                "feed_total_kmol_h": 3700.0,
+                "feed_flow_basis": "molar_flow",
+                "native_flow_readback": null,
+                "hysys_molar_flow_kmol_h": 3699.9999999999995,
+                "hysys_mass_flow_kg_h": 64683.67137908934,
+                "thermal_mode": "isothermal",
+                "outlet_temperature_C": 600.0,
+                "connections": [
+                  {
+                    "call": "feed_state_before_attach",
+                    "fraction_sum": 1.0,
+                    "fractions_finite": true,
+                    "temperature_is_known": true,
+                    "pressure_is_known": true,
+                    "molar_flow_is_known": true,
+                    "temperature_C": 520.0,
+                    "pressure_kPa": 1350.0,
+                    "molar_flow_kmol_h": 3699.9999999999995,
+                    "result": "OK"
+                  },
+                  {
+                    "call": "hold_ignored",
+                    "result": "OK",
+                    "value": true
+                  },
+                  {
+                    "call": "set_reaction_set",
+                    "result": "OK",
+                    "value": "AGENT-EQ-SET"
+                  },
+                  {
+                    "call": "feeds_add",
+                    "result": "OK",
+                    "value": 1
+                  },
+                  {
+                    "call": "set_vapour_product",
+                    "result": "OK",
+                    "value": "VAPOUR"
+                  },
+                  {
+                    "call": "set_liquid_product",
+                    "result": "OK",
+                    "value": "LIQUID"
+                  },
+                  {
+                    "call": "set_energy_stream",
+                    "result": "OK",
+                    "value": "DUTY"
+                  },
+                  {
+                    "call": "set_pressure_drop",
+                    "result": "OK",
+                    "value": 0.0
+                  },
+                  {
+                    "call": "set_outlet_temperature",
+                    "result": "OK",
+                    "value": 600.0
+                  }
+                ]
+              }
+            },
+            {
+              "step": "release_ignored_before_solve",
+              "status": "OK",
+              "detail": {
+                "call": "release_ignored",
+                "result": "OK",
+                "value": false
+              }
+            },
+            {
+              "step": "solve_and_read_outputs",
+              "status": "OK",
+              "detail": {
+                "component_flows_kmol_h": {
+                  "Methane": 695.076206751741,
+                  "H2O": 2140.780240196438,
+                  "CO": 50.627841140117624,
+                  "Hydrogen": 1169.067557354944,
+                  "CO2": 254.29601275745216
+                },
+                "heat_duty_kW": 20234.422631665337,
+                "solver_is_solving": false,
+                "solver_evidence": {
+                  "stable_reads": 3,
+                  "required_stable_reads": 3,
+                  "polls": 3,
+                  "absolute_stability_tolerance": 1e-09,
+                  "checks": "phase flows, composition, temperature, pressure, mass flow, duty",
+                  "note": "Stable readback and idle solver; not an independent proof of thermodynamic equilibrium."
+                }
+              }
+            }
+          ],
+          "reactions": [
+            {
+              "reaction": "SMR-EQ",
+              "reactants": [
+                {
+                  "requested": "Methane",
+                  "used": "Methane",
+                  "coefficient": -1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "Water",
+                  "used": "H2O",
+                  "coefficient": -1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "CO",
+                  "used": "CO",
+                  "coefficient": 1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "Hydrogen",
+                  "used": "Hydrogen",
+                  "coefficient": 3.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                }
+              ],
+              "initial_lnk_source": 2,
+              "basis": 2,
+              "basis_units": "bar",
+              "reaction_phase": 0,
+              "apply": {
+                "strategy": "lnk_equation_array",
+                "unit": "bar",
+                "coefficients": [
+                  7.220544212153779,
+                  -23585.26615940764,
+                  2.829644973857468,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "lnk_at_T_from_fit": -0.6284965760794918,
+                "lnk_at_T_exact": -0.6277968264994113,
+                "source": {
+                  "write": 1,
+                  "readback": 1,
+                  "stuck": true
+                },
+                "write": {
+                  "property": "EquilibriumConstantParameterArrayValue",
+                  "target": [
+                    7.220544212153779,
+                    -23585.26615940764,
+                    2.829644973857468,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "how": "VARIANT",
+                  "readback": [
+                    7.220544212153779,
+                    -23585.26615940764,
+                    2.829644973857468,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "took_effect": true
+                },
+                "took_effect": true,
+                "k_written": 0.5333931144663759
+              },
+              "k_target": 0.5337664866925358
+            },
+            {
+              "reaction": "WGS-EQ",
+              "reactants": [
+                {
+                  "requested": "CO",
+                  "used": "CO",
+                  "coefficient": -1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "Water",
+                  "used": "H2O",
+                  "coefficient": -1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "CO2",
+                  "used": "CO2",
+                  "coefficient": 1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                },
+                {
+                  "requested": "Hydrogen",
+                  "used": "Hydrogen",
+                  "coefficient": 1.0,
+                  "attribute": "StoichiometricCoefficientValue"
+                }
+              ],
+              "initial_lnk_source": 2,
+              "basis": 2,
+              "basis_units": "bar",
+              "reaction_phase": 0,
+              "apply": {
+                "strategy": "lnk_equation_array",
+                "unit": "bar",
+                "coefficients": [
+                  -12.679152220171678,
+                  5420.7226522255,
+                  1.1045229627843762,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "lnk_at_T_from_fit": 1.0090334586167415,
+                "lnk_at_T_exact": 1.009306598705795,
+                "source": {
+                  "write": 1,
+                  "readback": 1,
+                  "stuck": true
+                },
+                "write": {
+                  "property": "EquilibriumConstantParameterArrayValue",
+                  "target": [
+                    -12.679152220171678,
+                    5420.7226522255,
+                    1.1045229627843762,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "how": "VARIANT",
+                  "readback": [
+                    -12.679152220171678,
+                    5420.7226522255,
+                    1.1045229627843762,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  "took_effect": true
+                },
+                "took_effect": true,
+                "k_written": 2.742948560074215
+              },
+              "k_target": 2.743697871617035
+            }
+          ],
+          "after_basis": [
+            {
+              "reaction": "SMR-EQ",
+              "lnk_source": 1,
+              "readable": {
+                "KEqValue": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "KEq": {
+                  "object": "CDispatch"
+                },
+                "EquilibriumConstant": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "EquilibriumConstantParameterArrayValue": [
+                  7.220544212153779,
+                  -23585.26615940764,
+                  2.829644973857468,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "EquilibriumConstantParameterArray": {
+                  "object": "CDispatch",
+                  "Values": [
+                    7.220544212153779,
+                    -23585.26615940764,
+                    2.829644973857468,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "LnKEquationAParameter": 7.220544212153779,
+                "LnKEquationBParameter": -23585.26615940764,
+                "LnKEquationCParameter": 2.829644973857468,
+                "LnKEquationDParameter": 0.0
+              }
+            },
+            {
+              "reaction": "WGS-EQ",
+              "lnk_source": 1,
+              "readable": {
+                "KEqValue": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "KEq": {
+                  "object": "CDispatch"
+                },
+                "EquilibriumConstant": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "EquilibriumConstantParameterArrayValue": [
+                  -12.679152220171678,
+                  5420.7226522255,
+                  1.1045229627843762,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "EquilibriumConstantParameterArray": {
+                  "object": "CDispatch",
+                  "Values": [
+                    -12.679152220171678,
+                    5420.7226522255,
+                    1.1045229627843762,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "LnKEquationAParameter": -12.679152220171678,
+                "LnKEquationBParameter": 5420.7226522255,
+                "LnKEquationCParameter": 1.1045229627843762,
+                "LnKEquationDParameter": 0.0
+              }
+            }
+          ],
+          "solved": {
+            "component_flows_kmol_h": {
+              "Methane": 695.076206751741,
+              "H2O": 2140.780240196438,
+              "CO": 50.627841140117624,
+              "Hydrogen": 1169.067557354944,
+              "CO2": 254.29601275745216
+            },
+            "heat_duty_kW": 20234.422631665337,
+            "outlet": {
+              "VAPOUR": {
+                "molar_flow_kmol_h": 4309.847858200693,
+                "temperature_C": 600.0,
+                "pressure_kPa": 1350.0,
+                "mass_flow_kg_h": 64683.87235143616,
+                "mole_fractions": {
+                  "Methane": 0.1612762746204982,
+                  "H2O": 0.49671828580282806,
+                  "CO": 0.01174701353872248,
+                  "Hydrogen": 0.27125494816028495,
+                  "CO2": 0.05900347787766632
+                }
+              },
+              "LIQUID": {
+                "molar_flow_kmol_h": 0.0
+              }
+            }
+          },
+          "after_solve": [
+            {
+              "reaction": "SMR-EQ",
+              "readable": {
+                "KEqValue": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "KEq": {
+                  "object": "CDispatch"
+                },
+                "EquilibriumConstant": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "EquilibriumConstantParameterArrayValue": [
+                  7.220544212153779,
+                  -23585.26615940764,
+                  2.829644973857468,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "EquilibriumConstantParameterArray": {
+                  "object": "CDispatch",
+                  "Values": [
+                    7.220544212153779,
+                    -23585.26615940764,
+                    2.829644973857468,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "LnKEquationAParameter": 7.220544212153779,
+                "LnKEquationBParameter": -23585.26615940764,
+                "LnKEquationCParameter": 2.829644973857468,
+                "LnKEquationDParameter": 0.0
+              }
+            },
+            {
+              "reaction": "WGS-EQ",
+              "readable": {
+                "KEqValue": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "KEq": {
+                  "object": "CDispatch"
+                },
+                "EquilibriumConstant": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+                "EquilibriumConstantParameterArrayValue": [
+                  -12.679152220171678,
+                  5420.7226522255,
+                  1.1045229627843762,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0,
+                  0.0
+                ],
+                "EquilibriumConstantParameterArray": {
+                  "object": "CDispatch",
+                  "Values": [
+                    -12.679152220171678,
+                    5420.7226522255,
+                    1.1045229627843762,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ]
+                },
+                "LnKEquationAParameter": -12.679152220171678,
+                "LnKEquationBParameter": 5420.7226522255,
+                "LnKEquationCParameter": 1.1045229627843762,
+                "LnKEquationDParameter": 0.0
+              }
+            }
+          ],
+          "flows_internal": {
+            "methane": 695.076206751741,
+            "water": 2140.780240196438,
+            "carbon monoxide": 50.627841140117624,
+            "hydrogen": 1169.067557354944,
+            "carbon dioxide": 254.29601275745216
+          },
+          "quotients": {
+            "SMR-EQ": {
+              "bar": 0.5333930871726724,
+              "kPa": 5333.930871726724,
+              "atm": 0.5195342196261464,
+              "Pa": 5333930871.726725,
+              "MPa": 0.005333930871726724,
+              "psi": 112.20427877702649
+            },
+            "WGS-EQ": 2.7429485600742156
+          },
+          "inlet": {
+            "methane": 1000.0,
+            "water": 2700.0
+          },
+          "status": "SOLVED",
+          "quotient_check": {
+            "SMR-EQ": {
+              "Q": 0.5333930871726724,
+              "K": 0.5337664866925358,
+              "ln_ratio": -0.0006998007500404308
+            },
+            "smr_unit_matching_the_number_written": "bar",
+            "WGS-EQ": {
+              "Q": 2.7429485600742156,
+              "K": 2.743697871617035,
+              "ln_ratio": -0.00027314008905323105
+            },
+            "k_honoured": true,
+            "wgs_honoured": true
+          }
+        }
+      ],
+      "constants": {
+        "SMR-EQ": {
+          "dG_J_per_mol": 4748.783061705093,
+          "K_atm": 0.5198979173058245,
+          "dn": 2
+        },
+        "WGS-EQ": {
+          "dG_J_per_mol": -7327.336829237727,
+          "K_atm": 2.743697871617035,
+          "dn": 0
+        }
+      },
+      "final_strategy": "lnk_equation_array",
+      "k_unit": "bar",
+      "comparison_with_gibbs": {
+        "components": {
+          "methane": {
+            "equilibrium": 695.076206751741,
+            "gibbs": 696.4761462351352,
+            "difference": -1.3999394833941778,
+            "within": true
+          },
+          "water": {
+            "equilibrium": 2140.780240196438,
+            "gibbs": 2143.3772891862295,
+            "difference": -2.5970489897913467,
+            "within": true
+          },
+          "carbon monoxide": {
+            "equilibrium": 50.627841140117624,
+            "gibbs": 50.424996715955764,
+            "difference": 0.2028444241618601,
+            "within": true
+          },
+          "hydrogen": {
+            "equilibrium": 1169.067557354944,
+            "gibbs": 1163.6704183435004,
+            "difference": 5.397139011443642,
+            "within": true
+          },
+          "carbon dioxide": {
+            "equilibrium": 254.29601275745216,
+            "gibbs": 253.0988570489084,
+            "difference": 1.197155708543761,
+            "within": true
+          }
+        },
+        "methane_conversion_percent": {
+          "equilibrium": 30.4923793248259,
+          "gibbs": 30.352385376486485,
+          "difference_pp": 0.13999394833941636
+        },
+        "duty_kW": {
+          "equilibrium": 20234.422631665337,
+          "gibbs": 20159.497951675905,
+          "relative": 0.0037165945386652397
+        },
+        "matches_gibbs": true
+      },
+      "checks": {
+        "element_relative_error": {
+          "C": 6.0649311e-08,
+          "H": 4.490529e-08,
+          "O": 3.9574615e-08
+        },
+        "worst_element_relative_error": 6.06493108534778e-08,
+        "inlet_mass_kg_h": 64683.5,
+        "outlet_mass_kg_h": 64683.502863461996,
+        "mass_relative_error": 4.426881655646612e-08,
+        "specified_conversion": [],
+        "reactant_conversion_percent": {
+          "methane": 30.4923793248259,
+          "water": 20.711842955687477
+        },
+        "co_yield": {
+          "definition": "(n_CO_out - n_CO_in) / n_C_feed * 100%",
+          "co_produced_kmol_h": 50.627841140117624,
+          "carbon_fed_kmol_h": 1000.0,
+          "co_yield_percent": 5.062784114011762,
+          "total_carbon_out_kmol_h": 1000.0000606493107,
+          "total_outlet_kmol_h": 4309.847858200693,
+          "water_outlet_kmol_h": 2140.780240196438,
+          "dry_outlet_kmol_h": 2169.0676180042547,
+          "co_mole_fraction_dry": 0.023340831203178432,
+          "note": "CO yield, carbon conversion and CO mole fraction are three different quantities and are reported separately. The mole fraction is on a dry basis: water and any unreacted solid carbon are excluded from the denominator.",
+          "solid_carbon_fed_kmol_h": 0.0,
+          "carbon_conversion_percent": null,
+          "carbon_conversion_note": "No solid carbon enters this case, so a carbon conversion is not defined here. Use reactant_conversion_percent for the key conversion; a carbon conversion of 100% would be meaningless."
+        },
+        "heat_duty_kW": 20234.422631665337,
+        "heat_duty_scope": "External heat needed to hold the stated outlet temperature. For an isothermal case this includes sensible heating of the feed from its inlet temperature to the outlet temperature as well as the heat of reaction, so it is the reactor duty, not the heat of reaction alone."
+      },
+      "saved_case": "agent-smr-eq-600C.hsc",
+      "close": {
+        "call": "close_saved_case",
+        "case_name_readback": "Case",
+        "case_count_before": 1,
+        "method": "case.Close(SaveChanges=False)",
+        "result": "OK",
+        "case_count_after": 0,
+        "case_count_change": 1
+      },
+      "decision": "EQUILIBRIUM_CONFIRMED"
+    }
+  },
+  "discovery": {
+    "thermo": {
+      "at_outlet": {
+        "710": {
+          "gibbs_J_per_mol": {
+            "methane": 17370.929270734254,
+            "water": -193746.02944160032,
+            "carbon monoxide": -198466.84553856836,
+            "hydrogen": 0.0,
+            "carbon dioxide": -395852.55585419224
+          },
+          "constants": {
+            "SMR-EQ": {
+              "dG_J_per_mol": -22091.7453677023,
+              "K_atm": 14.917939074038546,
+              "dn": 2
+            },
+            "WGS-EQ": {
+              "dG_J_per_mol": -3639.6808740235574,
+              "K_atm": 1.5608890242635742,
+              "dn": 0
+            }
+          }
+        },
+        "600": {
+          "gibbs_J_per_mol": {
+            "methane": 5964.837405645463,
+            "water": -199533.42706996354,
+            "carbon monoxide": -188819.80660261298,
+            "hydrogen": 0.0,
+            "carbon dioxide": -395680.57050181425
+          },
+          "constants": {
+            "SMR-EQ": {
+              "dG_J_per_mol": 4748.783061705093,
+              "K_atm": 0.5198979173058245,
+              "dn": 2
+            },
+            "WGS-EQ": {
+              "dG_J_per_mol": -7327.336829237727,
+              "K_atm": 2.743697871617035,
+              "dn": 0
+            }
+          }
+        }
+      },
+      "lnk_atm_points": {
+        "SMR-EQ": [
+          [
+            773.15,
+            -4.493409997533468
+          ],
+          [
+            823.15,
+            -2.4617576967840114
+          ],
+          [
+            873.15,
+            -0.6541227995519729
+          ],
+          [
+            923.15,
+            0.9658946405718039
+          ],
+          [
+            973.15,
+            2.4272137198892656
+          ],
+          [
+            1023.15,
+            3.753100581312934
+          ],
+          [
+            1073.15,
+            4.962485320993461
+          ],
+          [
+            1123.15,
+            6.070927141407334
+          ]
+        ],
+        "WGS-EQ": [
+          [
+            773.15,
+            1.6773978944367085
+          ],
+          [
+            823.15,
+            1.3212680187421306
+          ],
+          [
+            873.15,
+            1.009306598705795
+          ],
+          [
+            923.15,
+            0.734336828447036
+          ],
+          [
+            973.15,
+            0.49065686604360453
+          ],
+          [
+            1023.15,
+            0.2736794357506943
+          ],
+          [
+            1073.15,
+            0.07967217972775914
+          ],
+          [
+            1123.15,
+            -0.09443263664701372
+          ]
+        ]
+      }
+    },
+    "reaction_state": {
+      "reaction": "SMR-EQ",
+      "reactants": [
+        {
+          "requested": "Methane",
+          "used": "Methane",
+          "coefficient": -1.0,
+          "attribute": "StoichiometricCoefficientValue"
+        },
+        {
+          "requested": "Water",
+          "used": "H2O",
+          "coefficient": -1.0,
+          "attribute": "StoichiometricCoefficientValue"
+        },
+        {
+          "requested": "CO",
+          "used": "CO",
+          "coefficient": 1.0,
+          "attribute": "StoichiometricCoefficientValue"
+        },
+        {
+          "requested": "Hydrogen",
+          "used": "Hydrogen",
+          "coefficient": 3.0,
+          "attribute": "StoichiometricCoefficientValue"
+        }
+      ],
+      "initial_lnk_source": 2,
+      "basis": 2,
+      "basis_units": "bar",
+      "reaction_phase": 0
+    },
+    "enums": {
+      "LnKSourceEnum_enum": {
+        "eqrxn_Gibbs": 0,
+        "eqrxn_LnKEquation": 1,
+        "eqrxn_FixedK": 2,
+        "eqrxn_Table": 3,
+        "eqrxn_FixedExtent": 4
+      }
+    },
+    "members": [
+      {
+        "name": "LnKSource",
+        "kind": "get",
+        "params": [],
+        "n_params": 0
+      },
+      {
+        "name": "LnKSource",
+        "kind": "put",
+        "params": [],
+        "n_params": 1
+      },
+      {
+        "name": "EquilibriumConstant",
+        "kind": "get",
+        "params": [],
+        "n_params": 0
+      },
+      {
+        "name": "EquilibriumConstant",
+        "kind": "put",
+        "params": [],
+        "n_params": 1
+      },
+      {
+        "name": "LnKEquationAParameter",
+        "kind": "get",
+        "params": [],
+        "n_params": 0
+      },
+      {
+        "name": "LnKEquationAParameter",
+        "kind": "put",
+        "params": [],
+        "n_params": 1
+      },
+      {
+        "name": "LnKEquationBParameter",
+        "kind": "get",
+        "params": [],
+        "n_params": 0
+      },
+      {
+        "name": "LnKEquationBParameter",
+        "kind": "put",
+        "params": [],
+        "n_params": 1
+      },
+      {
+        "name": "LnKEquationCParameter",
+        "kind": "get",
+        "params": [],
+        "n_params": 0
+      },
+      {
+        "name": "LnKEquationCParameter",
+        "kind": "put",
+        "params": [],
+        "n_params": 1
+      },
+      {
+        "name": "LnKEquationDParameter",
+        "kind": "get",
+        "params": [],
+        "n_params": 0
+      },
+      {
+        "name": "LnKEquationDParameter",
+        "kind": "put",
+        "params": [],
+        "n_params": 1
+      },
+      {
+        "name": "ActivateKTable",
+        "kind": "get",
+        "params": [],
+        "n_params": 0
+      },
+      {
+        "name": "ActivateKTable",
+        "kind": "put",
+        "params": [],
+        "n_params": 1
+      },
+      {
+        "name": "KEq",
+        "kind": "get",
+        "params": [],
+        "n_params": 0
+      },
+      {
+        "name": "KEqValue",
+        "kind": "get",
+        "params": [],
+        "n_params": 0
+      },
+      {
+        "name": "KEqValue",
+        "kind": "put",
+        "params": [],
+        "n_params": 1
+      },
+      {
+        "name": "EraseTable",
+        "kind": "method",
+        "params": [],
+        "n_params": 0
+      },
+      {
+        "name": "EquilibriumConstantParameterArray",
+        "kind": "get",
+        "params": [],
+        "n_params": 0
+      },
+      {
+        "name": "EquilibriumConstantParameterArrayValue",
+        "kind": "get",
+        "params": [],
+        "n_params": 0
+      },
+      {
+        "name": "EquilibriumConstantParameterArrayValue",
+        "kind": "put",
+        "params": [],
+        "n_params": 1
+      }
+    ],
+    "sub_objects": {
+      "KEq": [
+        {
+          "name": "QueryInterface",
+          "kind": "method",
+          "params": [
+            "riid",
+            "ppvObj"
+          ],
+          "n_params": 2
+        },
+        {
+          "name": "AddRef",
+          "kind": "method",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "Release",
+          "kind": "method",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "GetTypeInfoCount",
+          "kind": "method",
+          "params": [
+            "pctinfo"
+          ],
+          "n_params": 1
+        },
+        {
+          "name": "GetTypeInfo",
+          "kind": "method",
+          "params": [
+            "itinfo",
+            "lcid",
+            "pptinfo"
+          ],
+          "n_params": 3
+        },
+        {
+          "name": "GetIDsOfNames",
+          "kind": "method",
+          "params": [
+            "riid",
+            "rgszNames",
+            "cNames",
+            "lcid",
+            "rgdispid"
+          ],
+          "n_params": 5
+        },
+        {
+          "name": "Invoke",
+          "kind": "method",
+          "params": [
+            "dispidMember",
+            "riid",
+            "lcid",
+            "wFlags",
+            "pdispparams",
+            "pvarResult",
+            "pexcepinfo",
+            "puArgErr"
+          ],
+          "n_params": 8
+        },
+        {
+          "name": "Application",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "Parent",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "IsValid",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "Description",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "State",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "IsKnown",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "CanModify",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "UnitConversionType",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "Values",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "Values",
+          "kind": "put",
+          "params": [],
+          "n_params": 1
+        },
+        {
+          "name": "SetValues",
+          "kind": "method",
+          "params": [
+            "val",
+            "unit"
+          ],
+          "n_params": 2
+        },
+        {
+          "name": "GetValues",
+          "kind": "method",
+          "params": [
+            "unit"
+          ],
+          "n_params": 1
+        },
+        {
+          "name": "Calculate",
+          "kind": "method",
+          "params": [
+            "val",
+            "unit"
+          ],
+          "n_params": 2
+        },
+        {
+          "name": "Erase",
+          "kind": "method",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "IsInconsistent",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "CalcBy",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "SetModifyState",
+          "kind": "method",
+          "params": [
+            "State"
+          ],
+          "n_params": 1
+        },
+        {
+          "name": "SetBounds",
+          "kind": "method",
+          "params": [
+            "Bound1",
+            "Bound2",
+            "Bound3"
+          ],
+          "n_params": 3
+        },
+        {
+          "name": "Variables",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "OffsetNames",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "TriggerSolve",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "TriggerSolve",
+          "kind": "put",
+          "params": [],
+          "n_params": 1
+        }
+      ],
+      "EquilibriumConstantParameterArray": [
+        {
+          "name": "QueryInterface",
+          "kind": "method",
+          "params": [
+            "riid",
+            "ppvObj"
+          ],
+          "n_params": 2
+        },
+        {
+          "name": "AddRef",
+          "kind": "method",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "Release",
+          "kind": "method",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "GetTypeInfoCount",
+          "kind": "method",
+          "params": [
+            "pctinfo"
+          ],
+          "n_params": 1
+        },
+        {
+          "name": "GetTypeInfo",
+          "kind": "method",
+          "params": [
+            "itinfo",
+            "lcid",
+            "pptinfo"
+          ],
+          "n_params": 3
+        },
+        {
+          "name": "GetIDsOfNames",
+          "kind": "method",
+          "params": [
+            "riid",
+            "rgszNames",
+            "cNames",
+            "lcid",
+            "rgdispid"
+          ],
+          "n_params": 5
+        },
+        {
+          "name": "Invoke",
+          "kind": "method",
+          "params": [
+            "dispidMember",
+            "riid",
+            "lcid",
+            "wFlags",
+            "pdispparams",
+            "pvarResult",
+            "pexcepinfo",
+            "puArgErr"
+          ],
+          "n_params": 8
+        },
+        {
+          "name": "Application",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "Parent",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "IsValid",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "Description",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "State",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "IsKnown",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "CanModify",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "UnitConversionType",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "Values",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "Values",
+          "kind": "put",
+          "params": [],
+          "n_params": 1
+        },
+        {
+          "name": "SetValues",
+          "kind": "method",
+          "params": [
+            "val",
+            "unit"
+          ],
+          "n_params": 2
+        },
+        {
+          "name": "GetValues",
+          "kind": "method",
+          "params": [
+            "unit"
+          ],
+          "n_params": 1
+        },
+        {
+          "name": "Calculate",
+          "kind": "method",
+          "params": [
+            "val",
+            "unit"
+          ],
+          "n_params": 2
+        },
+        {
+          "name": "Erase",
+          "kind": "method",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "IsInconsistent",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "CalcBy",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "SetModifyState",
+          "kind": "method",
+          "params": [
+            "State"
+          ],
+          "n_params": 1
+        },
+        {
+          "name": "SetBounds",
+          "kind": "method",
+          "params": [
+            "Bound1",
+            "Bound2",
+            "Bound3"
+          ],
+          "n_params": 3
+        },
+        {
+          "name": "Variables",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "OffsetNames",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "TriggerSolve",
+          "kind": "get",
+          "params": [],
+          "n_params": 0
+        },
+        {
+          "name": "TriggerSolve",
+          "kind": "put",
+          "params": [],
+          "n_params": 1
+        }
+      ]
+    },
+    "source_values": {
+      "gibbs": 0,
+      "equation": 1,
+      "fixed": 2,
+      "table": 3,
+      "from_enum": "LnKSourceEnum_enum"
+    },
+    "initial_lnk_source": 2,
+    "readable_under_initial": {
+      "KEqValue": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+      "KEq": {
+        "object": "CDispatch"
+      },
+      "EquilibriumConstant": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+      "EquilibriumConstantParameterArrayValue": [
+        -32767.0,
+        -32767.0,
+        -32767.0,
+        -32767.0,
+        -32767.0,
+        -32767.0,
+        -32767.0,
+        -32767.0
+      ],
+      "EquilibriumConstantParameterArray": {
+        "object": "CDispatch",
+        "Values": [
+          -32767.0,
+          -32767.0,
+          -32767.0,
+          -32767.0,
+          -32767.0,
+          -32767.0,
+          -32767.0,
+          -32767.0
+        ]
+      },
+      "LnKEquationAParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+      "LnKEquationBParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+      "LnKEquationCParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+      "LnKEquationDParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)"
+    },
+    "source_map": [
+      {
+        "write": 0,
+        "readback": 2,
+        "stuck": false
+      },
+      {
+        "write": 1,
+        "readback": 1,
+        "stuck": true,
+        "readable": {
+          "KEqValue": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "KEq": {
+            "object": "CDispatch"
+          },
+          "EquilibriumConstant": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "EquilibriumConstantParameterArrayValue": [
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0
+          ],
+          "EquilibriumConstantParameterArray": {
+            "object": "CDispatch",
+            "Values": [
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0
+            ]
+          },
+          "LnKEquationAParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "LnKEquationBParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "LnKEquationCParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "LnKEquationDParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)"
+        }
+      },
+      {
+        "write": 2,
+        "readback": 2,
+        "stuck": true,
+        "readable": {
+          "KEqValue": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "KEq": {
+            "object": "CDispatch"
+          },
+          "EquilibriumConstant": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "EquilibriumConstantParameterArrayValue": [
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0
+          ],
+          "EquilibriumConstantParameterArray": {
+            "object": "CDispatch",
+            "Values": [
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0
+            ]
+          },
+          "LnKEquationAParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "LnKEquationBParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "LnKEquationCParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "LnKEquationDParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)"
+        }
+      },
+      {
+        "write": 3,
+        "readback": 3,
+        "stuck": true,
+        "readable": {
+          "KEqValue": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "KEq": {
+            "object": "CDispatch"
+          },
+          "EquilibriumConstant": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "EquilibriumConstantParameterArrayValue": [
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0
+          ],
+          "EquilibriumConstantParameterArray": {
+            "object": "CDispatch",
+            "Values": [
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0
+            ]
+          },
+          "LnKEquationAParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "LnKEquationBParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "LnKEquationCParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "LnKEquationDParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)"
+        }
+      },
+      {
+        "write": 4,
+        "readback": 4,
+        "stuck": true,
+        "readable": {
+          "KEqValue": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "KEq": {
+            "object": "CDispatch"
+          },
+          "EquilibriumConstant": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "EquilibriumConstantParameterArrayValue": [
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0,
+            -32767.0
+          ],
+          "EquilibriumConstantParameterArray": {
+            "object": "CDispatch",
+            "Values": [
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0,
+              -32767.0
+            ]
+          },
+          "LnKEquationAParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "LnKEquationBParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "LnKEquationCParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)",
+          "LnKEquationDParameter": "ERROR com_error: (-2147352567, 'Exception occurred.', (0, None, None, None, 0, -2147467259), None)"
+        }
+      }
+    ],
+    "restore": {
+      "write": 2,
+      "readback": 2,
+      "stuck": true
+    },
+    "stuck_values": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "status": "OK",
+    "close": {
+      "call": "close_saved_case",
+      "case_name_readback": "Case",
+      "case_count_before": 1,
+      "method": "case.Close(SaveChanges=False)",
+      "result": "OK",
+      "case_count_after": 0,
+      "case_count_change": 1
+    }
+  },
+  "decision": {
+    "code": "EQUILIBRIUM_CONFIRMED",
+    "route": "implement: scenario 1 on the Equilibrium reactor",
+    "why": "At both temperatures a K source was written, the outlet satisfies K from HYSYS Gibbs data, and the result matches the accepted Gibbs runs. final_strategy says which.",
+    "final_strategy": [
+      "lnk_equation_array"
+    ]
+  },
+  "finished": "2026-10-03T10:14:55"
+}

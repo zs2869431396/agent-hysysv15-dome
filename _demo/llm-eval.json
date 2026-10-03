@@ -1,0 +1,427 @@
+{
+  "max_tokens": 3000,
+  "wall_seconds": 183.0,
+  "schema_style": "flat_object_with_arrays",
+  "results": [
+    {
+      "model": "mimo-v2.6-flash",
+      "cases": {
+        "toluene": {
+          "seconds": 29.19,
+          "note": null,
+          "score": "5/6",
+          "ratio": 0.833,
+          "checks": {
+            "50% conversion": true,
+            "10000 kg/h": false,
+            "380 C feed": true,
+            "2.5 MPa (or 2500 kPa)": true,
+            "benzene present": true,
+            "xylene present": true
+          },
+          "missing_count": 10
+        },
+        "smr": {
+          "seconds": 23.17,
+          "note": null,
+          "score": "5/5",
+          "ratio": 1.0,
+          "checks": {
+            "two outlet temperatures": true,
+            "600 and 710 captured": true,
+            "inlet 520 C": true,
+            "13.5 bar": true,
+            "reforming species present": true
+          },
+          "missing_count": 6
+        },
+        "gasification": {
+          "seconds": 14.34,
+          "note": null,
+          "score": "5/5",
+          "ratio": 1.0,
+          "checks": {
+            "Nm3 preserved, not converted": true,
+            "1400 C outlet": true,
+            "40 bar": true,
+            "40 C feed": true,
+            "questions the Nm3 basis": true
+          },
+          "missing_count": 12
+        }
+      },
+      "mean_score": 0.944,
+      "mean_seconds": 22.23,
+      "useful": true
+    },
+    {
+      "model": "deepseek-v4-flash-0731",
+      "cases": {
+        "toluene": {
+          "seconds": 4.19,
+          "note": null,
+          "score": "6/6",
+          "ratio": 1.0,
+          "checks": {
+            "50% conversion": true,
+            "10000 kg/h": true,
+            "380 C feed": true,
+            "2.5 MPa (or 2500 kPa)": true,
+            "benzene present": true,
+            "xylene present": true
+          },
+          "missing_count": 8
+        },
+        "smr": {
+          "seconds": 2.03,
+          "note": null,
+          "score": "4/5",
+          "ratio": 0.8,
+          "checks": {
+            "two outlet temperatures": true,
+            "600 and 710 captured": true,
+            "inlet 520 C": true,
+            "13.5 bar": false,
+            "reforming species present": true
+          },
+          "missing_count": 5
+        },
+        "gasification": {
+          "seconds": 2.52,
+          "note": null,
+          "score": "4/5",
+          "ratio": 0.8,
+          "checks": {
+            "Nm3 preserved, not converted": true,
+            "1400 C outlet": true,
+            "40 bar": true,
+            "40 C feed": true,
+            "questions the Nm3 basis": false
+          },
+          "missing_count": 8
+        }
+      },
+      "mean_score": 0.867,
+      "mean_seconds": 2.91,
+      "useful": true
+    },
+    {
+      "model": "qwen3.7-flash",
+      "cases": {
+        "toluene": {
+          "seconds": 23.02,
+          "note": null,
+          "score": "6/6",
+          "ratio": 1.0,
+          "checks": {
+            "50% conversion": true,
+            "10000 kg/h": true,
+            "380 C feed": true,
+            "2.5 MPa (or 2500 kPa)": true,
+            "benzene present": true,
+            "xylene present": true
+          },
+          "missing_count": 1
+        },
+        "smr": {
+          "seconds": 29.93,
+          "note": null,
+          "score": "1/5",
+          "ratio": 0.2,
+          "checks": {
+            "two outlet temperatures": false,
+            "600 and 710 captured": false,
+            "inlet 520 C": false,
+            "13.5 bar": false,
+            "reforming species present": true
+          },
+          "missing_count": 5
+        },
+        "gasification": {
+          "seconds": 34.4,
+          "note": "empty content (finish=length, reasoning_tokens=3000)",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_gasification": false
+          },
+          "missing_count": 0
+        }
+      },
+      "mean_score": 0.4,
+      "mean_seconds": 29.12,
+      "useful": false
+    },
+    {
+      "model": "mimo-v2.5-pro",
+      "cases": {
+        "toluene": {
+          "seconds": 14.18,
+          "note": null,
+          "score": "4/6",
+          "ratio": 0.667,
+          "checks": {
+            "50% conversion": true,
+            "10000 kg/h": true,
+            "380 C feed": true,
+            "2.5 MPa (or 2500 kPa)": true,
+            "benzene present": false,
+            "xylene present": false
+          },
+          "missing_count": 8
+        },
+        "smr": {
+          "seconds": 60.21,
+          "note": "HTTP 504: <html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body bgcolor=\"white\">\r\n<center><h1>504 Gateway Time",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_smr": false
+          },
+          "missing_count": 0
+        },
+        "gasification": {
+          "seconds": 60.29,
+          "note": "HTTP 504: <html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body bgcolor=\"white\">\r\n<center><h1>504 Gateway Time",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_gasification": false
+          },
+          "missing_count": 0
+        }
+      },
+      "mean_score": 0.222,
+      "mean_seconds": 44.89,
+      "useful": false
+    },
+    {
+      "model": "minimax-m2.7",
+      "cases": {
+        "toluene": {
+          "seconds": 2.78,
+          "note": "HTTP 400: {\"code\":\"LITELLM_ERROR\",\"message\":\"invalid params, Mismatch type string with value array \\\"at index 1091: mism",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_toluene": false
+          },
+          "missing_count": 0
+        },
+        "smr": {
+          "seconds": 2.42,
+          "note": "HTTP 400: {\"code\":\"LITELLM_ERROR\",\"message\":\"invalid params, Mismatch type string with value array \\\"at index 1299: mism",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_smr": false
+          },
+          "missing_count": 0
+        },
+        "gasification": {
+          "seconds": 0.41,
+          "note": "HTTP 400: {\"code\":\"LITELLM_ERROR\",\"message\":\"invalid params, Mismatch type string with value array \\\"at index 1077: mism",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_gasification": false
+          },
+          "missing_count": 0
+        }
+      },
+      "mean_score": 0.0,
+      "mean_seconds": 1.87,
+      "useful": false
+    },
+    {
+      "model": "glm-5.3-flashx",
+      "cases": {
+        "toluene": {
+          "seconds": 22.59,
+          "note": "not JSON: Expecting value: line 1 column 1 (char 0)",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_toluene": false
+          },
+          "missing_count": 0
+        },
+        "smr": {
+          "seconds": 24.49,
+          "note": "not JSON: Expecting value: line 1 column 1 (char 0)",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_smr": false
+          },
+          "missing_count": 0
+        },
+        "gasification": {
+          "seconds": 15.74,
+          "note": "not JSON: Expecting value: line 1 column 1 (char 0)",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_gasification": false
+          },
+          "missing_count": 0
+        }
+      },
+      "mean_score": 0.0,
+      "mean_seconds": 20.94,
+      "useful": false
+    },
+    {
+      "model": "deepseek-flash",
+      "cases": {
+        "toluene": {
+          "seconds": 22.81,
+          "note": "empty content (finish=length, reasoning_tokens=3000)",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_toluene": false
+          },
+          "missing_count": 0
+        },
+        "smr": {
+          "seconds": 21.37,
+          "note": "empty content (finish=length, reasoning_tokens=3000)",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_smr": false
+          },
+          "missing_count": 0
+        },
+        "gasification": {
+          "seconds": 24.78,
+          "note": "empty content (finish=length, reasoning_tokens=3000)",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_gasification": false
+          },
+          "missing_count": 0
+        }
+      },
+      "mean_score": 0.0,
+      "mean_seconds": 22.99,
+      "useful": false
+    },
+    {
+      "model": "glm-5.3-flash",
+      "cases": {
+        "toluene": {
+          "seconds": 64.76,
+          "note": "HTTP 504: <html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body bgcolor=\"white\">\r\n<center><h1>504 Gateway Time",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_toluene": false
+          },
+          "missing_count": 0
+        },
+        "smr": {
+          "seconds": 60.22,
+          "note": "HTTP 504: <html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body bgcolor=\"white\">\r\n<center><h1>504 Gateway Time",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_smr": false
+          },
+          "missing_count": 0
+        },
+        "gasification": {
+          "seconds": 29.53,
+          "note": "not JSON: Expecting value: line 1 column 1 (char 0)",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_gasification": false
+          },
+          "missing_count": 0
+        }
+      },
+      "mean_score": 0.0,
+      "mean_seconds": 51.5,
+      "useful": false
+    },
+    {
+      "model": "qwen3.8-flash",
+      "cases": {
+        "toluene": {
+          "seconds": 54.82,
+          "note": "empty content (finish=length, reasoning_tokens=3000)",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_toluene": false
+          },
+          "missing_count": 0
+        },
+        "smr": {
+          "seconds": 52.85,
+          "note": "empty content (finish=length, reasoning_tokens=3000)",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_smr": false
+          },
+          "missing_count": 0
+        },
+        "gasification": {
+          "seconds": 60.2,
+          "note": "HTTP 504: <html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body bgcolor=\"white\">\r\n<center><h1>504 Gateway Time",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_gasification": false
+          },
+          "missing_count": 0
+        }
+      },
+      "mean_score": 0.0,
+      "mean_seconds": 55.96,
+      "useful": false
+    },
+    {
+      "model": "seed-2.1-turbo",
+      "cases": {
+        "toluene": {
+          "seconds": 62.5,
+          "note": "HTTP 504: <html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body bgcolor=\"white\">\r\n<center><h1>504 Gateway Time",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_toluene": false
+          },
+          "missing_count": 0
+        },
+        "smr": {
+          "seconds": 60.22,
+          "note": "HTTP 504: <html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body bgcolor=\"white\">\r\n<center><h1>504 Gateway Time",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_smr": false
+          },
+          "missing_count": 0
+        },
+        "gasification": {
+          "seconds": 60.22,
+          "note": "HTTP 504: <html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body bgcolor=\"white\">\r\n<center><h1>504 Gateway Time",
+          "score": "0/1",
+          "ratio": 0.0,
+          "checks": {
+            "score_gasification": false
+          },
+          "missing_count": 0
+        }
+      },
+      "mean_score": 0.0,
+      "mean_seconds": 60.98,
+      "useful": false
+    }
+  ]
+}

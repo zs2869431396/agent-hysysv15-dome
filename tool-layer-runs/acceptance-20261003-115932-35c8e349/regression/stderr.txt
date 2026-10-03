@@ -1,0 +1,49 @@
+test_advertised_aliases_are_supported (hysys_tools.test_reliability.ReliabilityTests.test_advertised_aliases_are_supported) ... ok
+test_balance_rejects_nan (hysys_tools.test_reliability.ReliabilityTests.test_balance_rejects_nan) ... ok
+test_baseline_comparison_catches_changes_and_missing_values (hysys_tools.test_reliability.ReliabilityTests.test_baseline_comparison_catches_changes_and_missing_values) ... ok
+test_blocking_question_rejected_even_with_valid_numbers (hysys_tools.test_reliability.ReliabilityTests.test_blocking_question_rejected_even_with_valid_numbers) ... ok
+test_cli_summary_is_ascii_for_unicode_path_and_error (hysys_tools.test_reliability.ReliabilityTests.test_cli_summary_is_ascii_for_unicode_path_and_error) ... ok
+test_conversion_without_base_inlet_is_rejected (hysys_tools.test_reliability.ReliabilityTests.test_conversion_without_base_inlet_is_rejected) ... ok
+test_duplicate_feed_aliases_rejected (hysys_tools.test_reliability.ReliabilityTests.test_duplicate_feed_aliases_rejected) ... ok
+test_existing_case_file_not_overwritten (hysys_tools.test_reliability.ReliabilityTests.test_existing_case_file_not_overwritten) ... ok
+test_failed_basis_build_closes_owned_case (hysys_tools.test_reliability.ReliabilityTests.test_failed_basis_build_closes_owned_case) ... ok
+test_foreign_stream_case_not_edited_saved_or_closed (hysys_tools.test_reliability.ReliabilityTests.test_foreign_stream_case_not_edited_saved_or_closed) ... ok
+test_health_check_without_com_is_structured (hysys_tools.test_reliability.ReliabilityTests.test_health_check_without_com_is_structured) ... ok
+test_informational_question_does_not_block (hysys_tools.test_reliability.ReliabilityTests.test_informational_question_does_not_block) ... ok
+test_invalid_case_names_rejected_before_creating_case (hysys_tools.test_reliability.ReliabilityTests.test_invalid_case_names_rejected_before_creating_case) ... ok
+test_invalid_readback_rejected (hysys_tools.test_reliability.ReliabilityTests.test_invalid_readback_rejected) ... ok
+test_json_bom_supported_and_nonfinite_constants_rejected (hysys_tools.test_reliability.ReliabilityTests.test_json_bom_supported_and_nonfinite_constants_rejected) ... ok
+test_json_write_failure_not_swallowed (hysys_tools.test_reliability.ReliabilityTests.test_json_write_failure_not_swallowed) ... ok
+test_last_valid_sample_is_not_returned_after_unknowns (hysys_tools.test_reliability.ReliabilityTests.test_last_valid_sample_is_not_returned_after_unknowns) ... ok
+test_malformed_reactor_cli_returns_result (hysys_tools.test_reliability.ReliabilityTests.test_malformed_reactor_cli_returns_result) ... ok
+test_missing_com_dependency_produces_json (hysys_tools.test_reliability.ReliabilityTests.test_missing_com_dependency_produces_json) ... ok
+test_missing_reactions_allowed_for_gibbs (hysys_tools.test_reliability.ReliabilityTests.test_missing_reactions_allowed_for_gibbs) ... ok
+test_multiple_conversion_reactions_rejected (hysys_tools.test_reliability.ReliabilityTests.test_multiple_conversion_reactions_rejected) ... ok
+test_nonfinite_input_rejected (hysys_tools.test_reliability.ReliabilityTests.test_nonfinite_input_rejected) ... ok
+test_null_collections_rejected (hysys_tools.test_reliability.ReliabilityTests.test_null_collections_rejected) ... ok
+test_output_mismatch_keeps_failure_case_and_classification (hysys_tools.test_reliability.ReliabilityTests.test_output_mismatch_keeps_failure_case_and_classification) ... ok
+test_pressure_drop_cannot_exceed_inlet_pressure (hysys_tools.test_reliability.ReliabilityTests.test_pressure_drop_cannot_exceed_inlet_pressure) ... ok
+test_remote_worker_timeout_keeps_logs (hysys_tools.test_reliability.ReliabilityTests.test_remote_worker_timeout_keeps_logs) ... ok
+test_solver_restarts_after_stable_reads (hysys_tools.test_reliability.ReliabilityTests.test_solver_restarts_after_stable_reads) ... ok
+test_stable_composition_with_moving_duty_fails (hysys_tools.test_reliability.ReliabilityTests.test_stable_composition_with_moving_duty_fails) ... ok
+test_stable_composition_with_moving_temperature_fails (hysys_tools.test_reliability.ReliabilityTests.test_stable_composition_with_moving_temperature_fails) ... ok
+test_stable_result_has_evidence (hysys_tools.test_reliability.ReliabilityTests.test_stable_result_has_evidence) ... ok
+test_unknown_base_and_conflicting_conversion_rejected (hysys_tools.test_reliability.ReliabilityTests.test_unknown_base_and_conflicting_conversion_rejected) ... ok
+test_valid_but_oscillating_flows_fail (hysys_tools.test_reliability.ReliabilityTests.test_valid_but_oscillating_flows_fail) ... ok
+test_wrong_target_pressure_is_result_error (hysys_tools.test_reliability.ReliabilityTests.test_wrong_target_pressure_is_result_error) ... ok
+test_wrong_target_temperature_is_result_error (hysys_tools.test_reliability.ReliabilityTests.test_wrong_target_temperature_is_result_error) ... ok
+test_historical_unclear_spec_remains_blocked (hysys_tools.test_native_flow.NativeFlowTests.test_historical_unclear_spec_remains_blocked) ... ok
+test_mass_composition_is_not_used_as_mole_composition (hysys_tools.test_native_flow.NativeFlowTests.test_mass_composition_is_not_used_as_mole_composition) ... ok
+test_mismatch_rejected (hysys_tools.test_native_flow.NativeFlowTests.test_mismatch_rejected) ... ok
+test_native_setter_preserves_exact_value_unit_and_readback (hysys_tools.test_native_flow.NativeFlowTests.test_native_setter_preserves_exact_value_unit_and_readback) ... ok
+test_negative_composition_rejected_before_execution (hysys_tools.test_native_flow.NativeFlowTests.test_negative_composition_rejected_before_execution) ... ok
+test_precheck_defers_absolute_flow (hysys_tools.test_native_flow.NativeFlowTests.test_precheck_defers_absolute_flow) ... ok
+test_property_must_be_explicit (hysys_tools.test_native_flow.NativeFlowTests.test_property_must_be_explicit) ... ok
+test_rejected_unit_never_falls_back (hysys_tools.test_native_flow.NativeFlowTests.test_rejected_unit_never_falls_back) ... ok
+test_typo_mode_rejected (hysys_tools.test_native_flow.NativeFlowTests.test_typo_mode_rejected) ... ok
+test_unknown_and_nonfinite_readbacks_rejected (hysys_tools.test_native_flow.NativeFlowTests.test_unknown_and_nonfinite_readbacks_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 44 tests in 0.224s
+
+OK

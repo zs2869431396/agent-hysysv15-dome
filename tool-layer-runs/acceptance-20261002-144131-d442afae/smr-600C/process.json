@@ -1,0 +1,15 @@
+{
+  "label": "smr-600C",
+  "arguments": [
+    "-m",
+    "hysys_tools",
+    "--spec",
+    "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261002-221846-7576bf\\tool-layer-runs\\acceptance-20261002-144131-d442afae\\specs\\methane-steam-reforming-600C.json",
+    "--folder",
+    "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261002-221846-7576bf\\tool-layer-runs\\acceptance-20261002-144131-d442afae\\smr-600C"
+  ],
+  "timeout_seconds": 180.0,
+  "exit_code": 0,
+  "status": "FINISHED",
+  "elapsed_seconds": 2.282
+}

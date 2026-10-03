@@ -1,0 +1,413 @@
+"""The pipeline: one natural-language request, all the way to results.
+
+Written as plain functions rather than as graph nodes on purpose. The interesting
+behaviour - deciding, refusing, compiling, executing, summarising - should be
+testable without installing or understanding an orchestration framework, and the
+framework should only be responsible for pausing and resuming. `graph.py` wraps this.
+
+Stage order, and why it is this order:
+
+    extract -> normalise -> select -> compile -> precheck -> execute -> summarise
+
+Selection happens after normalisation because the rules read facts, not prose.
+Compilation happens after selection because the reactor kind decides what the spec
+contains. Pre-checking happens before execution because it costs milliseconds and a
+HYSYS run costs a subprocess, a case and a minute.
+
+Two hard rules run through the whole thing:
+
+  * **Nothing is invented.** A missing value becomes a question, and the run stops as
+    WAITING_INPUT with zero executions.
+  * **A dry run touches nothing.** With no adapter, or with `dry_run=True`, the
+    pipeline stops after the pre-check and reports the spec it would have run. This
+    is how the whole front half is tested on a machine without HYSYS.
+"""
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from hysys_tools import precheck
+
+from .adapters.hysys_cli import ExecutionResult, HysysCliAdapter
+from .adapters.run_store import RunStore
+from .capabilities import combination_status
+from .compiler import CompileError, compile_plan
+from .extraction import extract_verified, required_kind_for
+from .llm import ChatClient, LlmError
+from .normalize import NormalizationReport, normalize
+from .schemas import (
+    Assumption,
+    ModelingPlan,
+    OperatingCase,
+    ProcessRequest,
+    SelectionDecision,
+)
+from .selection import select_reactor
+
+# Overall task status. Mirrors what the plan promises to report.
+WAITING_INPUT = 'WAITING_INPUT'
+READY = 'READY'
+PASS = 'PASS'
+PARTIAL = 'PARTIAL'
+FAILED = 'FAILED'
+UNSUPPORTED = 'UNSUPPORTED'
+
+
+@dataclass
+class AgentRun:
+    """The complete outcome of one request."""
+    text: str
+    scenario_label: str = ''
+    status: str = WAITING_INPUT
+    request: ProcessRequest | None = None
+    report: NormalizationReport | None = None
+    decision: SelectionDecision | None = None
+    plan: ModelingPlan | None = None
+    executions: list[ExecutionResult] = field(default_factory=list)
+    problems: list[str] = field(default_factory=list)
+    explanation: str = ''
+    run_root: Path | None = None
+    started_at: str = ''
+    finished_at: str = ''
+
+    # ------------------------------------------------------------- reporting
+    @property
+    def blocking_questions(self) -> list[str]:
+        if self.plan is not None:
+            return [q.question for q in self.plan.blocking_questions()]
+        if self.report is not None:
+            return [q.question for q in self.report.blocking]
+        return []
+
+    @property
+    def assumptions_we_made(self) -> list[dict[str, Any]]:
+        """Values this agent chose, which must be stated in any report."""
+        if self.plan is None:
+            return []
+        return [{'field': a.field, 'value': a.value, 'scope': a.scope}
+                for a in self.plan.assumptions if a.source == 'agent_default']
+
+    def spec(self, case_id: str | None = None) -> dict[str, Any] | None:
+        if self.plan is None or not self.plan.cases:
+            return None
+        if case_id is None:
+            return self.plan.cases[0].spec
+        for case in self.plan.cases:
+            if case.case_id == case_id:
+                return case.spec
+        return None
+
+    def summary(self) -> dict[str, Any]:
+        """JSON-safe overview, suitable for a manifest or a UI."""
+        return {
+            'scenario': self.scenario_label,
+            'status': self.status,
+            'reactor': {
+                'preferred': self.decision.preferred_reactor if self.decision else None,
+                'executed': self.decision.execution_reactor if self.decision else None,
+                'capability': self.decision.capability_status if self.decision else None,
+                'rule': self.decision.rule_id if self.decision else None,
+            },
+            'cases': [c.case_id for c in (self.plan.cases if self.plan else [])],
+            'blocking_questions': self.blocking_questions,
+            'assumptions_we_made': self.assumptions_we_made,
+            'executions': [e.summary() for e in self.executions],
+            'problems': self.problems,
+            'started_at': self.started_at,
+            'finished_at': self.finished_at,
+        }
+
+
+def build_plan(request: ProcessRequest, decision: SelectionDecision,
+               report: NormalizationReport, heat_mode: str | None = None
+               ) -> ModelingPlan:
+    """Assemble the plan, keeping questions and assumptions attached to it.
+
+    Thermal mode comes from the operating cases when the user stated an outlet
+    temperature; otherwise the case is adiabatic. Deciding this here, not in the
+    prompt, is what keeps the same request producing the same plan twice.
+    """
+    defaulted = heat_mode is None
+    if heat_mode is None:
+        heat_mode = 'isothermal' if request.operating_cases else 'adiabatic'
+    cases = [OperatingCase(case_id=c.case_id, label=c.label)
+             for c in request.operating_cases] or [OperatingCase(case_id='single')]
+    plan = ModelingPlan(request=request, decision=decision,
+                        components=list(request.components),
+                        thermal_mode=heat_mode, cases=cases)
+    plan.questions.extend(report.questions)
+    plan.assumptions.extend(report.assumptions)
+    if defaulted:
+        # Choosing the thermal boundary is a modelling decision, and "adiabatic
+        # because nobody said otherwise" has a real effect on the duty. A reader who
+        # cannot tell it apart from a stated condition cannot judge the result.
+        plan.assumptions.append(Assumption(
+            id='a-thermal-mode', field='thermal_mode', value=heat_mode,
+            source='agent_default', accepted=False,
+            scope=('题面给出了出口温度，按等温处理（出口温度由外部热流维持）'
+                   if request.operating_cases
+                   else '题面未说明热边界，按绝热处理')))
+    return plan
+
+
+def precheck_spec(spec: dict[str, Any] | None) -> dict[str, Any]:
+    """Run the tool layer's own pre-check; never raises."""
+    if spec is None:
+        return {'ok': False, 'errors': ['no spec was produced'], 'warnings': []}
+    return precheck.validate_spec(spec)
+
+
+def _still_missing(facts: dict[str, Any], kind: str) -> list[str]:
+    """Required fields still absent for a scenario, judged on the extracted facts.
+
+    `feed_pressure` counts as present when it arrived per operating case, matching
+    `Extraction.gaps` - otherwise a reformer run would be told it is missing a
+    pressure it has already given.
+    """
+    if not kind:
+        return []
+    from .extraction import REQUIRED_BY_KIND
+    missing: list[str] = []
+    for name in REQUIRED_BY_KIND.get(kind, ()):
+        if facts.get(name) is not None:
+            continue
+        if name == 'feed_pressure' and any(
+                value is not None for value in (facts.get('case_pressures') or [])):
+            continue
+        missing.append(name)
+    return missing
+
+
+def run_pipeline(text: str, *, scenario_label: str = '', kind: str = '',
+                 phase: str = 'mixed', feed_basis: str = 'molar_fraction',
+                 client: ChatClient | None = None,
+                 adapter: HysysCliAdapter | None = None,
+                 run_root: Path | None = None,
+                 dry_run: bool = True,
+                 allowed_ungrounded: set[str] | None = None) -> AgentRun:
+    """Take one request as far as the arguments allow.
+
+    Stops at the first stage that cannot proceed, and says why. Execution only
+    happens when the plan is READY, an adapter was supplied and `dry_run` is false.
+
+    `run_root` is THIS RUN's directory, used exactly as given - the caller is
+    responsible for making it unique (a timestamped folder, like the tool layer's
+    own validation runner). The ledger lives there, and every case attempt creates a
+    fresh child directory inside it. Reusing a `run_root` is supported and means
+    "continue this run": cases that already succeeded with the same spec are skipped.
+    """
+    run = AgentRun(text=text, scenario_label=scenario_label,
+                   started_at=datetime.now().isoformat(timespec='seconds'))
+
+    # ------------------------------------------------------------ ② extract
+    if client is None:
+        run.status = FAILED
+        run.problems.append('no model client was supplied')
+        return _finish(run)
+
+    try:
+        extraction, problems = extract_verified(
+            client, text, kind, allowed=allowed_ungrounded or set())
+    except LlmError as exc:
+        run.status = FAILED
+        run.problems.append('model call failed: %s' % exc)
+        return _finish(run)
+
+    run.problems.extend(problems)
+    if extraction.error:
+        run.status = FAILED
+        run.problems.append('extraction failed: %s' % extraction.error)
+        return _finish(run)
+
+    # --------------------------------------------------------- ③ normalise
+    # Ungrounded fields become blocking questions here, so a fabricated value can
+    # never reach the compiler. Reporting it without blocking was a real defect: the
+    # value stayed in `facts` and would have been used.
+    request, report = normalize(extraction.facts, text,
+                                scenario_label=scenario_label, phase=phase,
+                                feed_basis=feed_basis,
+                                ungrounded=extraction.ungrounded)
+    run.request = request
+    run.report = report
+
+    # ------------------------------------------------------------ ④ select
+    decision = select_reactor(request,
+                             solid_phase=request.has_solid_reactant)
+    run.decision = decision
+
+    # Required fields are judged against the reactor the facts selected, not against a
+    # guess made before extraction. See `extraction.required_kind_for`.
+    effective_kind = kind or required_kind_for(decision.execution_reactor
+                                               or decision.preferred_reactor)
+    for name in _still_missing(extraction.facts, effective_kind):
+        run.problems.append('required field %r is still missing for a %s case'
+                            % (name, effective_kind))
+
+    # ----------------------------------------------------------- ⑤ compile
+    plan = build_plan(request, decision, report)
+    run.plan = plan
+    try:
+        compiled = compile_plan(plan)
+    except CompileError as exc:
+        run.status = FAILED
+        run.problems.append('compilation failed: %s' % exc)
+        return _finish(run)
+
+    if compiled.status == WAITING_INPUT:
+        run.status = WAITING_INPUT
+        return _finish(run)
+    if compiled.status == 'UNSUPPORTED' or not decision.is_executable():
+        run.status = UNSUPPORTED
+        run.explanation = decision.explanation + (
+            ' 工具层当前无法执行该组合，因此没有运行模拟。' if decision.fallback_reason
+            else '')
+        return _finish(run)
+
+    # ---------------------------------------------------------- ⑥ precheck
+    for case in compiled.cases:
+        check = precheck_spec(case.spec)
+        if not check['ok']:
+            run.status = FAILED
+            run.problems.append('case %s failed the pre-check: %s'
+                                % (case.case_id, '; '.join(check['errors'])))
+            return _finish(run)
+
+    run.status = READY
+
+    # ----------------------------------------------------------- ⑦ execute
+    if dry_run or adapter is None:
+        run.explanation = _describe_ready(compiled, decision)
+        return _finish(run)
+
+    store = RunStore(run_root or Path('runs'), run_id=scenario_label or 'run')
+    run.run_root = store.root
+    skipped: list[str] = []
+    for case in compiled.cases:
+        # Never redo a job that already succeeded with this exact spec.
+        if not store.needs_running(case.case_id, case.spec):
+            skipped.append(case.case_id)
+            run.problems.append('case %s already has a result for this spec; not '
+                                'running it again' % case.case_id)
+            continue
+        attempt = store.attempts(case.case_id) + 1
+        outcome = adapter.run_case(case.spec, case.case_id, store.root, attempt)
+        store.record_result(case.case_id, case.spec, attempt, outcome.status,
+                            run_dir=str(outcome.run_dir),
+                            seconds=round(outcome.seconds, 2),
+                            exit_code=outcome.exit_code,
+                            tool_status=(outcome.result or {}).get('status'),
+                            error_type=outcome.error_type, error=outcome.error,
+                            case_file=outcome.case_file)
+        run.executions.append(outcome)
+        if outcome.status in ('CANNOT_CONNECT_TO_HYSYS', 'TIMEOUT'):
+            # No point trying the remaining cases: the workstation is either
+            # unavailable or was left in an unknown state by the timeout.
+            run.problems.append(
+                'the workstation did not answer (%s); the remaining cases were not '
+                'attempted, and the workstation state should be checked before '
+                'resuming' % outcome.status)
+            break
+        if not outcome.passed:
+            run.problems.append('case %s did not pass: %s'
+                                % (case.case_id, outcome.error or outcome.status))
+
+    run.status = _status_from_executions(run.executions, len(compiled.cases),
+                                         already_done=len(skipped))
+    run.explanation = _describe_executed(run)
+    return _finish(run)
+
+
+def _status_from_executions(executions: list[ExecutionResult],
+                            expected: int, already_done: int = 0) -> str:
+    """PASS only when every awaited case passed; PARTIAL when some did.
+
+    `already_done` counts cases the ledger says have already succeeded. Without it a
+    resumed run - where every case is skipped and `executions` is therefore empty -
+    reported FAILED, which is the opposite of what happened. The graph node had the
+    same bug and was fixed the same way; the two paths disagreeing is how it survived
+    in one of them.
+    """
+    attempted = already_done + len(executions)
+    if attempted == 0:
+        return FAILED
+    passed = len([e for e in executions if e.passed]) + already_done
+    if passed == expected and attempted == expected:
+        return PASS
+    if passed:
+        return PARTIAL
+    return FAILED
+
+
+def _describe_ready(plan: ModelingPlan, decision: SelectionDecision) -> str:
+    lines = ['已完成选型与规格编译，尚未运行模拟（dry run）。',
+             '反应器：%s（%s）' % (decision.execution_reactor,
+                                  decision.capability_status)]
+    if decision.was_substituted():
+        lines.append('注意：理论选型为 %s，实际执行为 %s。'
+                     % (decision.preferred_reactor, decision.execution_reactor))
+    for case in plan.cases:
+        spec = case.spec or {}
+        reactor = spec.get('reactor', {})
+        lines.append('工况 %s：%s，%s'
+                     % (case.case_id, reactor.get('thermal_mode'),
+                        ('出口 %g %s' % (reactor['outlet_temperature'],
+                                         reactor.get('outlet_temperature_unit', 'C')))
+                        if reactor.get('outlet_temperature') is not None
+                        else '无出口温度设定'))
+    return '\n'.join(lines)
+
+
+def _describe_executed(run: AgentRun) -> str:
+    lines = []
+    for outcome in run.executions:
+        payload = outcome.result or {}
+        checks = payload.get('checks') or {}
+        conversions = checks.get('reactant_conversion_percent') or {}
+        lines.append('工况 %s：%s（%.1fs）'
+                     % (outcome.case_id, payload.get('status') or outcome.status,
+                        outcome.seconds))
+        if conversions:
+            lines.append('  转化率：%s'
+                         % '，'.join('%s %.4f%%' % (k, v)
+                                    for k, v in conversions.items()))
+        if payload.get('heat_duty_kW') is not None:
+            lines.append('  热负荷：%.2f kW' % payload['heat_duty_kW'])
+        if outcome.error:
+            lines.append('  错误：%s' % outcome.error)
+    return '\n'.join(lines) if lines else '没有执行任何工况。'
+
+
+def _finish(run: AgentRun) -> AgentRun:
+    run.finished_at = datetime.now().isoformat(timespec='seconds')
+    return run
+
+
+def write_run_artifacts(run: AgentRun, folder: Path) -> list[str]:
+    """Persist the run: summary, every spec, and the request as understood."""
+    folder = Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    written: list[str] = []
+
+    def dump(name: str, payload: Any) -> None:
+        path = folder / name
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
+                        encoding='utf-8')
+        written.append(name)
+
+    dump('run.json', run.summary())
+    if run.plan is not None:
+        for case in run.plan.cases:
+            if case.spec:
+                dump('spec-%s.json' % case.case_id, case.spec)
+    if run.request is not None:
+        dump('request.json', run.request.model_dump())
+    if run.report is not None:
+        dump('normalization.json', {'applied': run.report.applied,
+                                    'notes': run.report.notes,
+                                    'questions': [q.model_dump()
+                                                  for q in run.report.questions]})
+    return written

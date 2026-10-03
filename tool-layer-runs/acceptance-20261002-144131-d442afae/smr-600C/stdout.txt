@@ -1,0 +1,12 @@
+status          : PASS
+reactor kind    : gibbs
+case file       : agent-smr-600C.hsc (154206 bytes)
+element error   : {'C': -1e-15, 'H': 0.0, 'O': 1e-15}
+mass error      : 6.749e-16
+conversion      : Methane    30.3524 %
+conversion      : H2O        20.6157 %
+CO yield        : 5.0425% (carbon fed 1000.00 kmol/h)
+carbon conv.    : not applicable (no solid carbon in the feed)
+heat duty       : 20159.50 kW
+warning         : 1 open question(s) recorded in the spec: The component Gibbs data temperature limits read back as 25/426.85 K, below the 983.15 K needed for 710 C, so the equilibrium constants at 600/710 C may be extrapolated values. This affects how accurate the results are and must be stated in the report.
+result file     : C:\Users\azureuser\Desktop\dome\hysys-agent-repair-20261002-221846-7576bf\tool-layer-runs\acceptance-20261002-144131-d442afae\smr-600C\result.json

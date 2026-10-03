@@ -1,0 +1,167 @@
+{
+  "steps": [
+    {
+      "step": "create_blank_case",
+      "status": "OK"
+    },
+    {
+      "step": "create_blank_case",
+      "status": "OK",
+      "detail": {
+        "case_file": "agent-smr-600C.hsc",
+        "active_document_used": false
+      }
+    },
+    {
+      "step": "configure_basis",
+      "status": "OK",
+      "detail": {
+        "property_package_requested": "PengRob",
+        "property_package_readback": "Peng-Robinson",
+        "components_readback": [
+          "Methane",
+          "H2O",
+          "CO",
+          "Hydrogen",
+          "CO2"
+        ],
+        "basis_still_being_edited": true,
+        "case_ownership_established": true
+      }
+    },
+    {
+      "step": "end_basis_change",
+      "status": "OK",
+      "detail": {
+        "is_changing_basis": false
+      }
+    },
+    {
+      "step": "create_streams_and_reactor",
+      "status": "OK",
+      "detail": {
+        "reactor_kind": "gibbs",
+        "reactor_type_name": "gibbsreactorop",
+        "feed_molar_flows_kmol_h": {
+          "Methane": 1000.0,
+          "Water": 2700.0
+        },
+        "feed_total_kmol_h": 3700.0,
+        "feed_flow_basis": "molar_flow",
+        "hysys_molar_flow_kmol_h": 3699.9999999999995,
+        "hysys_mass_flow_kg_h": 64683.67137908934,
+        "thermal_mode": "isothermal",
+        "outlet_temperature_C": 600.0,
+        "connections": [
+          {
+            "call": "feed_state_before_attach",
+            "fraction_sum": 1.0,
+            "fractions_finite": true,
+            "temperature_is_known": true,
+            "pressure_is_known": true,
+            "molar_flow_is_known": true,
+            "temperature_C": 520.0,
+            "pressure_kPa": 1350.0,
+            "molar_flow_kmol_h": 3699.9999999999995,
+            "result": "OK"
+          },
+          {
+            "call": "hold_ignored",
+            "result": "OK",
+            "value": true
+          },
+          {
+            "call": "feeds_add",
+            "result": "OK",
+            "value": 1
+          },
+          {
+            "call": "set_vapour_product",
+            "result": "OK",
+            "value": "VAPOUR"
+          },
+          {
+            "call": "set_liquid_product",
+            "result": "OK",
+            "value": "LIQUID"
+          },
+          {
+            "call": "set_energy_stream",
+            "result": "OK",
+            "value": "DUTY"
+          },
+          {
+            "call": "set_pressure_drop",
+            "result": "OK",
+            "value": 0.0
+          },
+          {
+            "call": "set_outlet_temperature",
+            "result": "OK",
+            "value": 600.0
+          }
+        ]
+      }
+    },
+    {
+      "step": "reactor_connected",
+      "status": "OK",
+      "detail": {
+        "reaction_set_attached": false
+      }
+    },
+    {
+      "step": "release_ignored_before_solve",
+      "status": "OK",
+      "detail": {
+        "call": "release_ignored",
+        "result": "OK",
+        "value": false
+      }
+    },
+    {
+      "step": "solve_and_read_outputs",
+      "status": "OK",
+      "detail": {
+        "component_flows_kmol_h": {
+          "Methane": 696.4761462351352,
+          "H2O": 2143.3772891862295,
+          "CO": 50.424996715955764,
+          "Hydrogen": 1163.6704183435004,
+          "CO2": 253.0988570489084
+        },
+        "heat_duty_kW": 20159.497951675905,
+        "solver_is_solving": false,
+        "solver_evidence": {
+          "stable_reads": 3,
+          "required_stable_reads": 3,
+          "polls": 3,
+          "absolute_stability_tolerance": 1e-09,
+          "checks": "phase flows, composition, temperature, pressure, mass flow, duty",
+          "note": "Stable readback and idle solver; not an independent proof of thermodynamic equilibrium."
+        }
+      }
+    },
+    {
+      "step": "verify_results",
+      "status": "OK"
+    },
+    {
+      "step": "save_case",
+      "status": "OK"
+    },
+    {
+      "step": "close_saved_case",
+      "status": "OK",
+      "detail": {
+        "call": "close_saved_case",
+        "case_name_readback": "Case",
+        "case_count_before": 1,
+        "method": "case.Close(SaveChanges=False)",
+        "result": "OK",
+        "case_count_after": 0,
+        "case_count_change": 1
+      }
+    }
+  ]
+}

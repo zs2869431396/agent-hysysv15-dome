@@ -1,0 +1,37 @@
+{
+  "tool_revision": "2026-10-02-reliability-1",
+  "run_id": "20261002-221652-ffb85185",
+  "status": "OFFLINE_PASS_REMOTE_NOT_RUN",
+  "offline": true,
+  "python": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+  "platform": "Windows-10-10.0.26200-SP0",
+  "started_local": "2026-10-02T22:16:52.549414+08:00",
+  "checks": [
+    {
+      "label": "selfcheck",
+      "arguments": [
+        "-m",
+        "hysys_tools.selfcheck"
+      ],
+      "timeout_seconds": 90,
+      "exit_code": 0,
+      "status": "FINISHED",
+      "elapsed_seconds": 12.641
+    },
+    {
+      "label": "regression",
+      "arguments": [
+        "-m",
+        "unittest",
+        "hysys_tools.test_reliability",
+        "-v"
+      ],
+      "timeout_seconds": 90,
+      "exit_code": 0,
+      "status": "FINISHED",
+      "elapsed_seconds": 0.453
+    }
+  ],
+  "gasification_exam_status": "BLOCKED_INPUT_NOT_COMPLETED",
+  "finished_local": "2026-10-02T22:17:05.667142+08:00"
+}

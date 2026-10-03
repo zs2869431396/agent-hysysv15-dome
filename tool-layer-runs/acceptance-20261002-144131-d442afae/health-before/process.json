@@ -1,0 +1,12 @@
+{
+  "label": "health-before",
+  "arguments": [
+    "-m",
+    "hysys_tools",
+    "--health-check"
+  ],
+  "timeout_seconds": 30,
+  "exit_code": 0,
+  "status": "FINISHED",
+  "elapsed_seconds": 0.172
+}

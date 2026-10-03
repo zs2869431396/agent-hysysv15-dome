@@ -1,0 +1,13 @@
+{
+  "label": "regression",
+  "arguments": [
+    "-m",
+    "unittest",
+    "hysys_tools.test_reliability",
+    "-v"
+  ],
+  "timeout_seconds": 90,
+  "exit_code": 0,
+  "status": "FINISHED",
+  "elapsed_seconds": 0.453
+}

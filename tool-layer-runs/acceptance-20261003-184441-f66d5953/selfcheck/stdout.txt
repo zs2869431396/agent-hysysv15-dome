@@ -1,0 +1,172 @@
+HYSYS tool layer offline verification
+These are NOT HYSYS results; they verify the tool layer itself.
+
+== pure logic ==
+  PASS  Water resolves to the H2O readback name
+  PASS  an unknown component resolves to None
+  PASS  unit conversion MPa -> kPa
+  PASS  unit conversion bar -> kPa
+  PASS  SMR equation balances
+  PASS  an unbalanced equation is detected
+  PASS  mass_fraction with Nm3/h is rejected
+  PASS  molar_flow basis converts directly
+  PASS  molar_fraction + a kg/h total converts through molar mass
+  PASS  an equimolar mixture with a mass total splits evenly
+  PASS  the composition handed to HYSYS is the stated 50/50
+  PASS  an equimolar mixture does not favour the lighter component
+  PASS  mass fractions still convert per component
+  PASS  mass_fraction -> molar flow for toluene
+  PASS  toluene feed matches the measured HYSYS molar flow
+
+== conversion reactor (toluene) ==
+  PASS  status PASS
+  PASS  case file written
+  PASS  result.json written
+  PASS  C/H element balance closed
+  PASS  specified conversion was verified independently
+  PASS  measured conversion matches 50%
+
+== gibbs reactor (reforming, isothermal 710 C) ==
+  PASS  status PASS
+  PASS  C/H/O element balance closed
+  PASS  CO yield block present when carbon is fed
+  PASS  CO yield uses carbon fed as the denominator
+
+== equilibrium with inconsistent fake Gibbs data is rejected by Q/K ==
+  PASS  status FAILED
+  PASS  error explains the failed Q/K check
+  PASS  wrong equilibrium result is classified as a result failure
+
+== non-converged output is rejected ==
+  PASS  status FAILED
+  PASS  a non-converged case is not reported as PASS
+
+== basis-edit ordering is enforced ==
+  PASS  configure_basis precedes stream creation
+
+== the reactor is reactivated before solving ==
+  PASS  build still passes with the watching fake
+  PASS  the first product fill happens while still ignored (as intended)
+  PASS  clearing IsIgnored triggers a recompute (not left at the sentinel)
+  PASS  solve step ran, so IsIgnored was cleared before it
+
+== a non-blank case is refused, not silently reused ==
+  PASS  a dirty case is rejected
+  PASS  the error names the real cause (not blank / already open)
+  PASS  the error suggests the fix (unique folder or close it)
+
+== a non-blank basis is refused too ==
+  PASS  a case with an existing fluid package is rejected
+  PASS  the basis error also names the cause
+
+== reported figures cannot be misread ==
+  PASS  reforming reports the methane conversion
+  PASS  reforming also reports the steam conversion under the HYSYS name
+  PASS  conversion keys use the readback spelling, not internal keys
+  PASS  carbon conversion is null when no solid carbon enters
+  PASS  the null carbon conversion carries an explanation
+  PASS  an isothermal case states the duty scope
+  PASS  toluene reports the toluene conversion
+  PASS  an adiabatic case states a different duty scope
+
+== the case is closed through the case object, not by name ==
+  PASS  the saved case is closed before the run returns
+  PASS  closing goes through case.Close
+  PASS  SaveChanges=False is passed so no save prompt can block the call
+  PASS  the case count actually dropped
+  PASS  the readback name is the unhelpful "Case", as on the workstation
+  PASS  closing works anyway, because it uses the object not the name
+
+== a failed Close never falls back to removing by name ==
+  PASS  a failed Close does not fail the whole run
+  PASS  the failed Close is reported as FAILED
+  PASS  no case was removed by name as a fallback
+  PASS  the operator is warned that a case may still be open
+
+== a failed build still tidies up its case ==
+  PASS  the run failed as intended
+  PASS  the failed case is saved for inspection
+  PASS  the failed case is closed, so nothing accumulates
+
+== input problems and result problems are distinguishable ==
+  PASS  a solver timeout is not classified as a spec problem
+  PASS  an unusable specification is classified separately
+
+== a pass-through outlet is caught as a RESULT problem ==
+  PASS  the run is rejected
+  PASS  it is classified as a result problem, not a spec problem
+  PASS  the message says the outlet equalled the inlet
+  PASS  the message tells the reader the spec was accepted
+  PASS  ResultCheckError is not a SpecError, so except SpecError will not swallow it
+  PASS  the pass-through case was saved for inspection
+
+== a foreign (non-blank) case is never modified or closed ==
+  PASS  the run is rejected
+  PASS  nothing was closed
+  PASS  no -FAILED.hsc was written for a case we do not own
+  PASS  the case was left out of basis-edit state
+  PASS  the operator is told a foreign case was left alone
+
+== offline pre-flight catches spec problems before any COM call ==
+  PASS  a valid spec passes
+  PASS  the pre-flight reports what it derived
+  PASS  it fails
+  PASS  a second feed is reported rather than silently ignored
+  PASS  fractions that do not sum to 1 are reported
+  PASS  a missing required field is reported
+  PASS  an unsupported reactor kind is reported
+  PASS  every problem is reported at once, not just the first
+  PASS  a missing field is NOT classified as a runtime KeyError
+  PASS  a feed component missing from the package is reported up front
+  PASS  an unbalanced reaction is reported offline
+  PASS  the unusable equilibrium path is refused before a case is built
+  PASS  the refusal explains the missing thermal boundary
+  PASS  gibbs with reactions warns they will not be used
+
+== combinations that cannot work are refused, not left to fail late ==
+  PASS  gibbs + adiabatic is refused (never verified, would time out)
+  PASS  a negative feed pressure is refused
+  PASS  a zero feed pressure is refused
+  PASS  a temperature below absolute zero is refused
+  PASS  a molar_mass override is refused with the reason
+
+== the pre-check never crashes, whatever the field types are ==
+  PASS  every malformed spec yields a JSON report instead of a traceback
+  PASS  all 17 malformed cases were rejected
+
+== an accepted alias is one the executor can actually use ==
+  PASS  the display spelling Peng-Robinson is accepted
+  PASS  it is resolved to the internal name the executor sends
+  PASS  an unknown property package is refused, not guessed
+  PASS  the alias 'CH4' is accepted and resolves to 'Methane'
+  PASS  the alias 'steam' is accepted and resolves to 'Water'
+  PASS  the alias 'CO2' is accepted and resolves to 'CO2'
+  PASS  the alias 'methane' is accepted and resolves to 'Methane'
+
+== the full run refuses a bad spec without creating a case ==
+  PASS  build_case rejects it
+  PASS  classified as a specification problem
+  PASS  no case was created, so nothing was left open
+  PASS  the pre-flight warnings are carried into the result
+  PASS  a spec error is not masked by the connection step
+
+== a stale case is classified as an environment problem ==
+  PASS  the run is rejected
+  PASS  classified as environment, not specification
+  PASS  the message tells the caller to use a new folder
+
+== the stated-basis feed flow (normal_volume) ==
+  PASS  the stated-basis gasification spec passes the preflight
+  PASS  it converts on the basis the requester stated
+  PASS  80000 Nm3/h becomes 3569.20 kmol/h
+  PASS  the mode is recognised as delegated, not local
+  PASS  a kmol/h total is refused for a normal-volume feed
+  PASS  a kg/h total is refused for a normal-volume feed
+  PASS  a t/h total is refused for a normal-volume feed
+  PASS  a Nm3/d total is refused for a normal-volume feed
+  PASS  a nonsense total is refused for a normal-volume feed
+  PASS  a negative normal volume is refused
+  PASS  the measured vertex outlet is rejected
+  PASS  a plausible equilibrium outlet is accepted
+
+122 passed, 0 failed

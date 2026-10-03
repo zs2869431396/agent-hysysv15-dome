@@ -1,0 +1,41 @@
+{
+  "source": "tool-layer-runs/20261002-111439",
+  "note": "Historical results, not outputs of this revision. Numeric tolerance: rel=1e-6, abs=1e-5.",
+  "cases": {
+    "toluene": {
+      "status": "PASS",
+      "reactor_kind": "conversion",
+      "heat_duty_kW": 0.0,
+      "checks/reactant_conversion_percent/Toluene": 49.99999999999999,
+      "component_flows_kmol_h/Toluene": 54.26477710380134,
+      "component_flows_kmol_h/Benzene": 27.13238855190067,
+      "component_flows_kmol_h/o-Xylene": 9.04412951730022,
+      "component_flows_kmol_h/m-Xylene": 9.04412951730022,
+      "component_flows_kmol_h/p-Xylene": 9.04412951730022
+    },
+    "smr-710C": {
+      "status": "PASS",
+      "reactor_kind": "gibbs",
+      "heat_duty_kW": 39988.61475671525,
+      "checks/reactant_conversion_percent/Methane": 54.03580929422617,
+      "checks/reactant_conversion_percent/H2O": 31.929486469203084,
+      "component_flows_kmol_h/Methane": 459.6419070577383,
+      "component_flows_kmol_h/H2O": 1837.9038653315165,
+      "component_flows_kmol_h/CO": 218.6200512160405,
+      "component_flows_kmol_h/Hydrogen": 1942.8123205530023,
+      "component_flows_kmol_h/CO2": 321.7380417262208
+    },
+    "smr-600C": {
+      "status": "PASS",
+      "reactor_kind": "gibbs",
+      "heat_duty_kW": 20159.497951675905,
+      "checks/reactant_conversion_percent/Methane": 30.352385376486474,
+      "checks/reactant_conversion_percent/H2O": 20.61565595606556,
+      "component_flows_kmol_h/Methane": 696.4761462351352,
+      "component_flows_kmol_h/H2O": 2143.3772891862295,
+      "component_flows_kmol_h/CO": 50.424996715955764,
+      "component_flows_kmol_h/Hydrogen": 1163.6704183435004,
+      "component_flows_kmol_h/CO2": 253.0988570489084
+    }
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "toluene": {
+    "stage": "ready",
+    "case_id": "single",
+    "precheck_ok": true,
+    "spec": {
+      "schema": "hysys-agent/spec/1",
+      "case_name": "toluene",
+      "scenario": "toluene",
+      "fluid_package": {
+        "property_package": "PengRob",
+        "components": [
+          "Toluene",
+          "Benzene",
+          "o-Xylene",
+          "m-Xylene",
+          "p-Xylene"
+        ]
+      },
+      "feeds": [
+        {
+          "name": "FEED",
+          "basis": "mass_fraction",
+          "temperature": 380.0,
+          "temperature_unit": "C",
+          "pressure": 2.5,
+          "pressure_unit": "MPa",
+          "fractions": {
+            "Toluene": 1.0
+          },
+          "total_flow": 10000.0,
+          "total_flow_unit": "kg/h"
+        }
+      ],
+      "reactions": [
+        {
+          "name": "歧化反应",
+          "stoichiometry": {
+            "Toluene": -2.0,
+            "Benzene": 1.0,
+            "o-Xylene": 0.3333333333333333,
+            "m-Xylene": 0.3333333333333333,
+            "p-Xylene": 0.3333333333333333
+          },
+          "conversion_percent": 50.0,
+          "base_component": "Toluene",
+          "phase": "liquid"
+        }
+      ],
+      "reactor": {
+        "name": "AGENT-RX",
+        "kind": "conversion",
+        "thermal_mode": "adiabatic",
+        "pressure_drop_kPa": 0.0
+      },
+      "assumptions": [],
+      "open_questions": []
+    },
+    "blocking_questions": []
+  },
+  "smr": {
+    "stage": "ready",
+    "case_id": "case-2",
+    "precheck_ok": true,
+    "spec": {
+      "schema": "hysys-agent/spec/1",
+      "case_name": "smr",
+      "scenario": "smr",
+      "fluid_package": {
+        "property_package": "PengRob",
+        "components": [
+          "Methane",
+          "Water",
+          "CO",
+          "Hydrogen",
+          "CO2"
+        ]
+      },
+      "feeds": [
+        {
+          "name": "FEED",
+          "basis": "molar_fraction",
+          "temperature": 520.0,
+          "temperature_unit": "C",
+          "pressure": 13.5,
+          "pressure_unit": "bar",
+          "fractions": {
+            "Methane": 0.27027027027027023,
+            "Water": 0.7297297297297297
+          },
+          "total_flow": 1370.3703703703704,
+          "total_flow_unit": "kmol/h"
+        }
+      ],
+      "reactions": [],
+      "reactor": {
+        "name": "AGENT-RX",
+        "kind": "gibbs",
+        "thermal_mode": "isothermal",
+        "pressure_drop_kPa": 0.0,
+        "outlet_temperature": 600.0,
+        "outlet_temperature_unit": "C"
+      },
+      "assumptions": [
+        "feeds[0].total_flow = 1370.37037 (agent_default)"
+      ],
+      "open_questions": []
+    },
+    "blocking_questions": []
+  },
+  "gasification": {
+    "stage": "compile",
+    "status": "WAITING_INPUT",
+    "blocking": [
+      "进料流量 80000 Nm3/h 指的是哪一股物流、标准状态是什么？（例如 0°C/101.325 kPa 还是 20°C，以及它描述的是进料总量、水蒸气量还是出口合成气量）",
+      "进料流量 80000 Nm3/h 指的是哪一股物流、标准状态是什么？（例如 0°C/101.325 kPa 还是 20°C，以及它描述的是进料总量、水蒸气量还是出口合成气量）",
+      "煤能否按纯固体碳处理？如果方便，请给出工业分析或元素分析结果。"
+    ]
+  }
+}

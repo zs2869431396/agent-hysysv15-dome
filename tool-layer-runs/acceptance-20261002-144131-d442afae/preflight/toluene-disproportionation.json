@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "errors": [],
+  "warnings": [],
+  "readback": {
+    "components_resolved_to_library_names": [
+      "Toluene",
+      "Benzene",
+      "o-Xylene",
+      "m-Xylene",
+      "p-Xylene"
+    ],
+    "property_package_resolved": "PengRob",
+    "feed_C": 380.0,
+    "feed_kPa": 2500.0,
+    "feed_molar_flows_kmol_h": {
+      "Toluene": 108.52955476835452
+    },
+    "reactor_kind": "conversion",
+    "thermal_mode": "adiabatic"
+  }
+}

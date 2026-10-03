@@ -1,0 +1,56 @@
+{
+  "schema": "hysys-agent/spec/1",
+  "case_name": "agent-gasification",
+  "scenario": "coal_slurry_gasification",
+  "fluid_package": {
+    "name": "GAS-PR",
+    "property_package": "PengRob",
+    "components": [
+      "Carbon",
+      "Water",
+      "CO",
+      "Hydrogen",
+      "CO2",
+      "Methane"
+    ]
+  },
+  "feeds": [
+    {
+      "name": "SLURRY",
+      "basis": "mass_fraction",
+      "fractions": {
+        "Carbon": 0.62,
+        "Water": 0.38
+      },
+      "total_flow": 80000.0,
+      "total_flow_unit": "Nm3/h",
+      "temperature": 40.0,
+      "temperature_unit": "C",
+      "pressure": 40.0,
+      "pressure_unit": "bar"
+    }
+  ],
+  "reactions": [],
+  "reactor": {
+    "name": "GASIFIER",
+    "kind": "gibbs",
+    "thermal_mode": "isothermal",
+    "outlet_temperature": 1400.0,
+    "outlet_temperature_unit": "C",
+    "pressure_drop_kPa": 0.0
+  },
+  "assumptions": [
+    "Slurry at 62 wt% coal, 40 C, 40 bar absolute, outlet 1400 C.",
+    "Ash is neglected as the exam asks."
+  ],
+  "open_questions": [
+    "Which stream does 80000 Nm3/h refer to, and at which standard conditions (0 C / 101.325 kPa, or 15 C)? A coal-water slurry cannot be treated as a gas-equivalent normal volume flow without that.",
+    "Does neglecting ash allow the coal to be treated as pure carbon? If elemental analysis is available it should be used instead.",
+    "The exam provides no oxygen feed. Holding 1400 C therefore means an externally heated model with a reported duty, not autothermal gasification.",
+    "Solid-carbon support in V15 Gibbs has not been verified beyond adding the component."
+  ],
+  "blocking_questions": [
+    "Define which stream 80000 Nm3/h describes and its standard conditions.",
+    "Confirm whether the coal may be represented by pure solid carbon."
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "errors": [],
+  "warnings": [
+    "Native flow unit acceptance and absolute flow are deferred to HYSYS; offline precheck does not verify COM unit support.",
+    "2 open question(s) recorded in the spec: The exam provides no oxygen feed. Holding 1400 C therefore means an externally heated model with a reported duty, not autothermal gasification.; Solid-carbon support in V15 Gibbs has not been verified beyond adding the component."
+  ],
+  "readback": {
+    "components_resolved_to_library_names": [
+      "Carbon",
+      "Water",
+      "CO",
+      "Hydrogen",
+      "CO2",
+      "Methane"
+    ],
+    "property_package_resolved": "PengRob",
+    "feed_C": 40.0,
+    "feed_kPa": 4000.0,
+    "feed_mole_fractions": {
+      "Carbon": 0.7099065178205965,
+      "Water": 0.29009348217940334
+    },
+    "native_flow": {
+      "flow_property": "MolarFlow",
+      "total_flow": 80000.0,
+      "total_flow_unit": "Nm3/h"
+    },
+    "outlet_temperature_C": 1400.0,
+    "reactor_kind": "gibbs",
+    "thermal_mode": "isothermal"
+  }
+}

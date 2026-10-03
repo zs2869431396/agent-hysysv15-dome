@@ -1,0 +1,224 @@
+{
+  "steps": [
+    {
+      "step": "create_blank_case",
+      "status": "OK"
+    },
+    {
+      "step": "create_blank_case",
+      "status": "OK",
+      "detail": {
+        "case_file": "agent-toluene.hsc",
+        "active_document_used": false
+      }
+    },
+    {
+      "step": "configure_basis",
+      "status": "OK",
+      "detail": {
+        "property_package_requested": "PengRob",
+        "property_package_readback": "Peng-Robinson",
+        "components_readback": [
+          "Toluene",
+          "Benzene",
+          "o-Xylene",
+          "m-Xylene",
+          "p-Xylene"
+        ],
+        "basis_still_being_edited": true,
+        "case_ownership_established": true
+      }
+    },
+    {
+      "step": "configure_conversion_reactions",
+      "status": "OK",
+      "detail": [
+        {
+          "reaction": "TOL-DISPROP",
+          "equation": "2 toluene -> benzene + 0.333333 o-xylene + 0.333333 m-xylene + 0.333333 p-xylene",
+          "coefficients": [
+            50.0,
+            0.0,
+            0.0
+          ],
+          "phase_readback": 5,
+          "reactants": [
+            {
+              "requested": "Toluene",
+              "used": "Toluene",
+              "coefficient": -2.0,
+              "attribute": "StoichiometricCoefficientValue"
+            },
+            {
+              "requested": "Benzene",
+              "used": "Benzene",
+              "coefficient": 1.0,
+              "attribute": "StoichiometricCoefficientValue"
+            },
+            {
+              "requested": "o-Xylene",
+              "used": "o-Xylene",
+              "coefficient": 0.3333333333333333,
+              "attribute": "StoichiometricCoefficientValue"
+            },
+            {
+              "requested": "m-Xylene",
+              "used": "m-Xylene",
+              "coefficient": 0.3333333333333333,
+              "attribute": "StoichiometricCoefficientValue"
+            },
+            {
+              "requested": "p-Xylene",
+              "used": "p-Xylene",
+              "coefficient": 0.3333333333333333,
+              "attribute": "StoichiometricCoefficientValue"
+            },
+            {
+              "base_component": "Toluene",
+              "route": "component",
+              "readback": "Toluene"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": "end_basis_change",
+      "status": "OK",
+      "detail": {
+        "is_changing_basis": false
+      }
+    },
+    {
+      "step": "create_streams_and_reactor",
+      "status": "OK",
+      "detail": {
+        "reactor_kind": "conversion",
+        "reactor_type_name": "conversionreactorop",
+        "feed_molar_flows_kmol_h": {
+          "Toluene": 108.52955476835452
+        },
+        "feed_total_kmol_h": 108.52955476835452,
+        "feed_flow_basis": "mass_flow",
+        "hysys_molar_flow_kmol_h": 108.52955420760267,
+        "hysys_mass_flow_kg_h": 10000.0,
+        "thermal_mode": "adiabatic",
+        "outlet_temperature_C": null,
+        "connections": [
+          {
+            "call": "feed_state_before_attach",
+            "fraction_sum": 1.0,
+            "fractions_finite": true,
+            "temperature_is_known": true,
+            "pressure_is_known": true,
+            "molar_flow_is_known": true,
+            "temperature_C": 380.0,
+            "pressure_kPa": 2500.0,
+            "molar_flow_kmol_h": 108.52955420760267,
+            "result": "OK"
+          },
+          {
+            "call": "hold_ignored",
+            "result": "OK",
+            "value": true
+          },
+          {
+            "call": "set_reaction_set",
+            "result": "OK",
+            "value": "AGENT-SET"
+          },
+          {
+            "call": "feeds_add",
+            "result": "OK",
+            "value": 1
+          },
+          {
+            "call": "set_vapour_product",
+            "result": "OK",
+            "value": "VAPOUR"
+          },
+          {
+            "call": "set_liquid_product",
+            "result": "OK",
+            "value": "LIQUID"
+          },
+          {
+            "call": "set_energy_stream",
+            "result": "OK",
+            "value": "DUTY"
+          },
+          {
+            "call": "set_pressure_drop",
+            "result": "OK",
+            "value": 0.0
+          },
+          {
+            "call": "set_adiabatic_duty",
+            "result": "OK",
+            "value": 0.0
+          }
+        ]
+      }
+    },
+    {
+      "step": "reactor_connected",
+      "status": "OK",
+      "detail": {
+        "reaction_set_attached": true
+      }
+    },
+    {
+      "step": "release_ignored_before_solve",
+      "status": "OK",
+      "detail": {
+        "call": "release_ignored",
+        "result": "OK",
+        "value": false
+      }
+    },
+    {
+      "step": "solve_and_read_outputs",
+      "status": "OK",
+      "detail": {
+        "component_flows_kmol_h": {
+          "Toluene": 54.26477710380134,
+          "Benzene": 27.13238855190067,
+          "o-Xylene": 9.04412951730022,
+          "m-Xylene": 9.04412951730022,
+          "p-Xylene": 9.04412951730022
+        },
+        "heat_duty_kW": 0.0,
+        "solver_is_solving": false,
+        "solver_evidence": {
+          "stable_reads": 3,
+          "required_stable_reads": 3,
+          "polls": 3,
+          "absolute_stability_tolerance": 1e-09,
+          "checks": "phase flows, composition, temperature, pressure, mass flow, duty",
+          "note": "Stable readback and idle solver; not an independent proof of thermodynamic equilibrium."
+        }
+      }
+    },
+    {
+      "step": "verify_results",
+      "status": "OK"
+    },
+    {
+      "step": "save_case",
+      "status": "OK"
+    },
+    {
+      "step": "close_saved_case",
+      "status": "OK",
+      "detail": {
+        "call": "close_saved_case",
+        "case_name_readback": "Case",
+        "case_count_before": 1,
+        "method": "case.Close(SaveChanges=False)",
+        "result": "OK",
+        "case_count_after": 0,
+        "case_count_change": 1
+      }
+    }
+  ]
+}

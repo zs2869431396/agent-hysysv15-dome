@@ -1,0 +1,17 @@
+{
+  "label": "regression",
+  "arguments": [
+    "-m",
+    "unittest",
+    "discover",
+    "-s",
+    "hysys_tools",
+    "-t",
+    ".",
+    "-v"
+  ],
+  "timeout_seconds": 90,
+  "exit_code": 0,
+  "status": "FINISHED",
+  "elapsed_seconds": 5.14
+}

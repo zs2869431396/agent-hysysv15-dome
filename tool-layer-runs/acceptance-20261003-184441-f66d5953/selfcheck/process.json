@@ -1,0 +1,11 @@
+{
+  "label": "selfcheck",
+  "arguments": [
+    "-m",
+    "hysys_tools.selfcheck"
+  ],
+  "timeout_seconds": 90,
+  "exit_code": 0,
+  "status": "FINISHED",
+  "elapsed_seconds": 13.407
+}

@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "errors": [],
+  "warnings": [
+    "1 open question(s) recorded in the spec: The component Gibbs data temperature limits read back as 25/426.85 K, below the 983.15 K needed for 710 C, so the equilibrium constants at 600/710 C may be extrapolated values. This affects how accurate the results are and must be stated in the report."
+  ],
+  "readback": {
+    "components_resolved_to_library_names": [
+      "Methane",
+      "Water",
+      "CO",
+      "Hydrogen",
+      "CO2"
+    ],
+    "property_package_resolved": "PengRob",
+    "feed_C": 520.0,
+    "feed_kPa": 1350.0,
+    "feed_molar_flows_kmol_h": {
+      "Methane": 1000.0,
+      "Water": 2700.0
+    },
+    "outlet_temperature_C": 600.0,
+    "reactor_kind": "gibbs",
+    "thermal_mode": "isothermal"
+  }
+}

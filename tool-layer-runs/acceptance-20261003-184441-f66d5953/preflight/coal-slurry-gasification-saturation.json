@@ -1,0 +1,40 @@
+{
+  "ok": true,
+  "errors": [],
+  "warnings": [
+    "Normal volume converted on the stated basis 0 C / 101.325 kPa (22.413970 m3/kmol); HYSYS receives a molar flow, so HYSYS's own standard gas basis is not used.",
+    "1 open question(s) recorded in the spec: The exam provides no oxygen feed. Holding 1400 C therefore means an externally heated model with a reported duty, not autothermal gasification."
+  ],
+  "readback": {
+    "components_resolved_to_library_names": [
+      "Carbon",
+      "Water",
+      "CO",
+      "Hydrogen",
+      "CO2",
+      "Methane"
+    ],
+    "property_package_resolved": "PengRob",
+    "feed_C": 40.0,
+    "feed_kPa": 4000.0,
+    "feed_mole_fractions": {
+      "Carbon": 0.7099065178205965,
+      "Water": 0.29009348217940334
+    },
+    "normal_volume_conversion": {
+      "requested_normal_flow": 80000.0,
+      "requested_normal_unit": "Nm3/h",
+      "standard_conditions": "0 C / 101.325 kPa",
+      "molar_volume_m3_per_kmol": 22.413969544601038,
+      "molar_flow_kmol_h": 3569.2026725034066,
+      "component_flows_kmol_h": {
+        "Carbon": 2533.8002406328606,
+        "Water": 1035.4024318705458
+      }
+    },
+    "outlet_temperature_C": 1400.0,
+    "reactor_kind": "gibbs",
+    "thermal_mode": "isothermal",
+    "solid_carbon": "saturation"
+  }
+}

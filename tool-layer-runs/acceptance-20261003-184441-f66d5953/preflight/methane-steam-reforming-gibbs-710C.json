@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "errors": [],
+  "warnings": [
+    "1 open question(s) recorded in the spec: Earlier probes returned Gibbs temperature-limit numbers 25/426.85 without confirmed units. Do not label them K or C until the property units are verified. A good ln(K) fit and Q/K agreement do not prove the underlying Gibbs data are valid at the operating temperature."
+  ],
+  "readback": {
+    "components_resolved_to_library_names": [
+      "Methane",
+      "Water",
+      "CO",
+      "Hydrogen",
+      "CO2"
+    ],
+    "property_package_resolved": "PengRob",
+    "feed_C": 520.0,
+    "feed_kPa": 1350.0,
+    "feed_molar_flows_kmol_h": {
+      "Methane": 1000.0,
+      "Water": 2700.0
+    },
+    "outlet_temperature_C": 710.0,
+    "reactor_kind": "gibbs",
+    "thermal_mode": "isothermal"
+  }
+}

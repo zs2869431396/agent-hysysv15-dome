@@ -1,0 +1,416 @@
+{
+ "note": "Inputs are the accepted remote runs of 2026-10-03; expected = verify_case output of the code BEFORE the phase-1 change. The new code must reproduce it exactly for specs without a condensed species.",
+ "cases": {
+  "smr-600C": {
+   "spec": {
+    "schema": "hysys-agent/spec/1",
+    "case_name": "agent-smr-600C",
+    "scenario": "methane_steam_reforming",
+    "fluid_package": {
+     "name": "SMR-PR",
+     "property_package": "PengRob",
+     "components": [
+      "Methane",
+      "Water",
+      "CO",
+      "Hydrogen",
+      "CO2"
+     ]
+    },
+    "feeds": [
+     {
+      "name": "FEED",
+      "basis": "molar_flow",
+      "flows": {
+       "Methane": 1000.0,
+       "Water": 2700.0
+      },
+      "temperature": 520.0,
+      "temperature_unit": "C",
+      "pressure": 13.5,
+      "pressure_unit": "bar"
+     }
+    ],
+    "reactions": [],
+    "reactor": {
+     "name": "SMR",
+     "kind": "gibbs",
+     "thermal_mode": "isothermal",
+     "outlet_temperature": 600.0,
+     "outlet_temperature_unit": "C",
+     "pressure_drop_kPa": 0.0
+    },
+    "assumptions": [
+     "The Gibbs reactor is used rather than an Equilibrium reactor: this workstation cannot set the Equilibrium Ln(K) source to Gibbs (it stays FixedK = 2), so an Equilibrium reactor would silently use a fixed K. The exam allows whichever reactor type fits, and a reversible equilibrium-controlled high-temperature system is what Gibbs models.",
+     "Outlet temperature is held by an external heat stream: this is an isothermal case and the reported duty is external heat, not adiabatic.",
+     "The reported duty is the REACTOR duty, not the heat of reaction alone: since the feed enters at 520 C and leaves at the stated outlet temperature, it includes the sensible heat of raising the feed to that temperature as well as the endothermic heat of reaction. The exam does not define which figure is wanted, so the scope is stated explicitly.",
+     "13.5 bar treated as absolute; zero pressure drop.",
+     "Feed 1000/2700 kmol/h is a demonstration design basis (about 128 kt/y methane at 8000 h/y), not an actual plant figure.",
+     "The key conversion for this scenario is the METHANE conversion, reported in checks.reactant_conversion_percent. A carbon conversion is not defined here because no solid carbon enters."
+    ],
+    "open_questions": [
+     "The component Gibbs data temperature limits read back as 25/426.85 K, below the 983.15 K needed for 710 C, so the equilibrium constants at 600/710 C may be extrapolated values. This affects how accurate the results are and must be stated in the report."
+    ]
+   },
+   "inlet": {
+    "methane": 999.9999999999999,
+    "water": 2699.9999999999995
+   },
+   "outlet": {
+    "Methane": 696.4761462351352,
+    "H2O": 2143.3772891862295,
+    "CO": 50.424996715955764,
+    "Hydrogen": 1163.6704183435004,
+    "CO2": 253.0988570489084
+   },
+   "products": {
+    "VAPOUR": {
+     "molar_flow_kmol_h": 4307.047707529729,
+     "temperature_C": 600.0,
+     "pressure_kPa": 1350.0,
+     "mass_flow_kg_h": 64683.868587276236,
+     "mole_fractions": {
+      "Methane": 0.16170616011926953,
+      "H2O": 0.4976441949874629,
+      "CO": 0.011707554719628725,
+      "Hydrogen": 0.2701782049706883,
+      "CO2": 0.05876388520295056
+     }
+    },
+    "LIQUID": {
+     "molar_flow_kmol_h": 0.0
+    }
+   },
+   "molar_mass": {
+    "methane": 16.043,
+    "water": 18.015
+   },
+   "reactor_kind": "gibbs",
+   "heat_duty_kW": 20159.497951675905,
+   "thermal_mode": "isothermal",
+   "expected": {
+    "element_relative_error": {
+     "C": -1e-15,
+     "H": 0.0,
+     "O": 1e-15
+    },
+    "worst_element_relative_error": 1.0105496686365871e-15,
+    "inlet_mass_kg_h": 64683.49999999999,
+    "outlet_mass_kg_h": 64683.50000000004,
+    "mass_relative_error": 6.74913164641687e-16,
+    "specified_conversion": [],
+    "reactant_conversion_percent": {
+     "methane": 30.352385376486474,
+     "water": 20.61565595606556
+    },
+    "co_yield": {
+     "definition": "(n_CO_out - n_CO_in) / n_C_feed * 100%",
+     "co_produced_kmol_h": 50.424996715955764,
+     "carbon_fed_kmol_h": 999.9999999999999,
+     "co_yield_percent": 5.042499671595577,
+     "total_carbon_out_kmol_h": 999.9999999999993,
+     "total_outlet_kmol_h": 4307.047707529729,
+     "water_outlet_kmol_h": 2143.3772891862295,
+     "dry_outlet_kmol_h": 2163.6704183435,
+     "co_mole_fraction_dry": 0.023305303935597085,
+     "note": "CO yield, carbon conversion and CO mole fraction are three different quantities and are reported separately. The mole fraction is on a dry basis: water and any unreacted solid carbon are excluded from the denominator.",
+     "solid_carbon_fed_kmol_h": 0.0,
+     "carbon_conversion_percent": null,
+     "carbon_conversion_note": "No solid carbon enters this case, so a carbon conversion is not defined here. Use reactant_conversion_percent for the key conversion; a carbon conversion of 100% would be meaningless."
+    },
+    "heat_duty_kW": 20159.497951675905,
+    "heat_duty_scope": "External heat needed to hold the stated outlet temperature. For an isothermal case this includes sensible heating of the feed from its inlet temperature to the outlet temperature as well as the heat of reaction, so it is the reactor duty, not the heat of reaction alone.",
+    "gibbs_equilibrium": {
+     "temperature_K": 873.15,
+     "pressure_bar": 13.5,
+     "condensed_phase_present": false,
+     "y_CH4": 0.16170616011926953,
+     "y_H2": 0.2701782049706883,
+     "y_H2O": 0.4976441949874628,
+     "y_CO2": 0.05876388520295056,
+     "carbon_fraction": 0.0,
+     "normalisation": "gas-phase species only",
+     "expected_kp_bar_inverse": 0.2547594055191577,
+     "tolerance_orders": 1.0,
+     "comparison": "one-sided upper bound (no condensed phase)",
+     "outlet_kp_bar_inverse": 0.16409379990599268,
+     "orders_from_equilibrium": -0.19103805473948898,
+     "verdict": "CONSISTENT"
+    }
+   }
+  },
+  "smr-710C": {
+   "spec": {
+    "schema": "hysys-agent/spec/1",
+    "case_name": "agent-smr-710C",
+    "scenario": "methane_steam_reforming",
+    "fluid_package": {
+     "name": "SMR-PR",
+     "property_package": "PengRob",
+     "components": [
+      "Methane",
+      "Water",
+      "CO",
+      "Hydrogen",
+      "CO2"
+     ]
+    },
+    "feeds": [
+     {
+      "name": "FEED",
+      "basis": "molar_flow",
+      "flows": {
+       "Methane": 1000.0,
+       "Water": 2700.0
+      },
+      "temperature": 520.0,
+      "temperature_unit": "C",
+      "pressure": 13.5,
+      "pressure_unit": "bar"
+     }
+    ],
+    "reactions": [],
+    "reactor": {
+     "name": "SMR",
+     "kind": "gibbs",
+     "thermal_mode": "isothermal",
+     "outlet_temperature": 710.0,
+     "outlet_temperature_unit": "C",
+     "pressure_drop_kPa": 0.0
+    },
+    "assumptions": [
+     "The Gibbs reactor is used rather than an Equilibrium reactor: this workstation cannot set the Equilibrium Ln(K) source to Gibbs (it stays FixedK = 2), so an Equilibrium reactor would silently use a fixed K. The exam allows whichever reactor type fits, and a reversible equilibrium-controlled high-temperature system is what Gibbs models.",
+     "Outlet temperature is held by an external heat stream: this is an isothermal case and the reported duty is external heat, not adiabatic.",
+     "The reported duty is the REACTOR duty, not the heat of reaction alone: since the feed enters at 520 C and leaves at the stated outlet temperature, it includes the sensible heat of raising the feed to that temperature as well as the endothermic heat of reaction. The exam does not define which figure is wanted, so the scope is stated explicitly.",
+     "13.5 bar treated as absolute; zero pressure drop.",
+     "Feed 1000/2700 kmol/h is a demonstration design basis (about 128 kt/y methane at 8000 h/y), not an actual plant figure.",
+     "The key conversion for this scenario is the METHANE conversion, reported in checks.reactant_conversion_percent. A carbon conversion is not defined here because no solid carbon enters."
+    ],
+    "open_questions": [
+     "The component Gibbs data temperature limits read back as 25/426.85 K, below the 983.15 K needed for 710 C, so the equilibrium constants at 600/710 C may be extrapolated values. This affects how accurate the results are and must be stated in the report."
+    ]
+   },
+   "inlet": {
+    "methane": 999.9999999999999,
+    "water": 2699.9999999999995
+   },
+   "outlet": {
+    "Methane": 459.6419070577383,
+    "H2O": 1837.9038653315165,
+    "CO": 218.6200512160405,
+    "Hydrogen": 1942.8123205530023,
+    "CO2": 321.7380417262208
+   },
+   "products": {
+    "VAPOUR": {
+     "molar_flow_kmol_h": 4780.716185884519,
+     "temperature_C": 710.0,
+     "pressure_kPa": 1350.0,
+     "mass_flow_kg_h": 64684.06114187387,
+     "mole_fractions": {
+      "Methane": 0.09614498940867292,
+      "H2O": 0.38444111590604096,
+      "CO": 0.045729560742705296,
+      "Hydrogen": 0.4063852035996876,
+      "CO2": 0.06729913034289305
+     }
+    },
+    "LIQUID": {
+     "molar_flow_kmol_h": 0.0
+    }
+   },
+   "molar_mass": {
+    "methane": 16.043,
+    "water": 18.015
+   },
+   "reactor_kind": "gibbs",
+   "heat_duty_kW": 39988.61475671525,
+   "thermal_mode": "isothermal",
+   "expected": {
+    "element_relative_error": {
+     "C": -0.0,
+     "H": -1e-15,
+     "O": -1e-15
+    },
+    "worst_element_relative_error": 7.740380440620668e-16,
+    "inlet_mass_kg_h": 64683.49999999999,
+    "outlet_mass_kg_h": 64683.49999999996,
+    "mass_relative_error": -4.499421097611246e-16,
+    "specified_conversion": [],
+    "reactant_conversion_percent": {
+     "methane": 54.03580929422617,
+     "water": 31.929486469203084
+    },
+    "co_yield": {
+     "definition": "(n_CO_out - n_CO_in) / n_C_feed * 100%",
+     "co_produced_kmol_h": 218.6200512160405,
+     "carbon_fed_kmol_h": 999.9999999999999,
+     "co_yield_percent": 21.862005121604053,
+     "total_carbon_out_kmol_h": 999.9999999999995,
+     "total_outlet_kmol_h": 4780.716185884518,
+     "water_outlet_kmol_h": 1837.9038653315165,
+     "dry_outlet_kmol_h": 2942.812320553002,
+     "co_mole_fraction_dry": 0.07428949841251116,
+     "note": "CO yield, carbon conversion and CO mole fraction are three different quantities and are reported separately. The mole fraction is on a dry basis: water and any unreacted solid carbon are excluded from the denominator.",
+     "solid_carbon_fed_kmol_h": 0.0,
+     "carbon_conversion_percent": null,
+     "carbon_conversion_note": "No solid carbon enters this case, so a carbon conversion is not defined here. Use reactant_conversion_percent for the key conversion; a carbon conversion of 100% would be meaningless."
+    },
+    "heat_duty_kW": 39988.61475671525,
+    "heat_duty_scope": "External heat needed to hold the stated outlet temperature. For an isothermal case this includes sensible heating of the feed from its inlet temperature to the outlet temperature as well as the heat of reaction, so it is the reactor duty, not the heat of reaction alone.",
+    "gibbs_equilibrium": {
+     "temperature_K": 983.15,
+     "pressure_bar": 13.5,
+     "condensed_phase_present": false,
+     "y_CH4": 0.09614498940867294,
+     "y_H2": 0.40638520359968766,
+     "y_H2O": 0.384441115906041,
+     "y_CO2": 0.06729913034289306,
+     "carbon_fraction": 0.0,
+     "normalisation": "gas-phase species only",
+     "expected_kp_bar_inverse": 0.0721782090457445,
+     "tolerance_orders": 1.0,
+     "comparison": "one-sided upper bound (no condensed phase)",
+     "outlet_kp_bar_inverse": 0.043123808961679395,
+     "orders_from_equilibrium": -0.2236889882810008,
+     "verdict": "CONSISTENT"
+    }
+   }
+  },
+  "toluene": {
+   "spec": {
+    "schema": "hysys-agent/spec/1",
+    "case_name": "agent-toluene",
+    "scenario": "toluene_disproportionation",
+    "fluid_package": {
+     "name": "TOL-PR",
+     "property_package": "PengRob",
+     "components": [
+      "Toluene",
+      "Benzene",
+      "o-Xylene",
+      "m-Xylene",
+      "p-Xylene"
+     ]
+    },
+    "feeds": [
+     {
+      "name": "FEED",
+      "basis": "molar_fraction",
+      "fractions": {
+       "Toluene": 1.0
+      },
+      "total_flow": 10000.0,
+      "total_flow_unit": "kg/h",
+      "temperature": 380.0,
+      "temperature_unit": "C",
+      "pressure": 2.5,
+      "pressure_unit": "MPa"
+     }
+    ],
+    "reactions": [
+     {
+      "name": "TOL-DISPROP",
+      "stoichiometry": {
+       "Toluene": -2.0,
+       "Benzene": 1.0,
+       "o-Xylene": 0.3333333333333333,
+       "m-Xylene": 0.3333333333333333,
+       "p-Xylene": 0.3333333333333333
+      },
+      "conversion_percent": 50.0,
+      "base_component": "Toluene",
+      "phase": "combined"
+     }
+    ],
+    "reactor": {
+     "name": "TOL-RX",
+     "kind": "conversion",
+     "thermal_mode": "adiabatic",
+     "pressure_drop_kPa": 0.0
+    },
+    "assumptions": [
+     "The o/m/p xylene split of one third each is a user-approved assumption, not an industrial selectivity or a thermodynamic prediction.",
+     "Adiabatic with zero pressure drop: the exam gives no outlet temperature or duty, so the outlet temperature is computed by HYSYS.",
+     "Peng-Robinson; 2.5 MPa treated as absolute."
+    ],
+    "open_questions": []
+   },
+   "inlet": {
+    "toluene": 108.52955420760267
+   },
+   "outlet": {
+    "Toluene": 54.26477710380134,
+    "Benzene": 27.13238855190067,
+    "o-Xylene": 9.04412951730022,
+    "m-Xylene": 9.04412951730022,
+    "p-Xylene": 9.04412951730022
+   },
+   "products": {
+    "VAPOUR": {
+     "molar_flow_kmol_h": 108.52955420760266,
+     "temperature_C": 378.2815361999403,
+     "pressure_kPa": 2500.0,
+     "mass_flow_kg_h": 9999.848059286522,
+     "mole_fractions": {
+      "Toluene": 0.5000000000000001,
+      "Benzene": 0.25000000000000006,
+      "o-Xylene": 0.08333333333333333,
+      "m-Xylene": 0.08333333333333333,
+      "p-Xylene": 0.08333333333333333
+     }
+    },
+    "LIQUID": {
+     "molar_flow_kmol_h": 0.0
+    }
+   },
+   "molar_mass": {
+    "toluene": 92.1408
+   },
+   "reactor_kind": "conversion",
+   "heat_duty_kW": 0.0,
+   "thermal_mode": "adiabatic",
+   "expected": {
+    "element_relative_error": {
+     "C": 0.0,
+     "H": 0.0
+    },
+    "worst_element_relative_error": 1.3093995289079065e-16,
+    "inlet_mass_kg_h": 9999.999948331877,
+    "outlet_mass_kg_h": 10000.010801287297,
+    "mass_relative_error": 1.0852955476052845e-06,
+    "specified_conversion": [
+     {
+      "reaction": "TOL-DISPROP",
+      "base_component": "Toluene",
+      "checked": true,
+      "requested_percent": 50.0,
+      "measured_percent": 49.99999999999999,
+      "base_component_inlet_kmol_h": 108.52955420760267,
+      "base_component_outlet_kmol_h": 54.26477710380134
+     }
+    ],
+    "reactant_conversion_percent": {
+     "toluene": 49.99999999999999
+    },
+    "co_yield": {
+     "definition": "(n_CO_out - n_CO_in) / n_C_feed * 100%",
+     "co_produced_kmol_h": 0.0,
+     "carbon_fed_kmol_h": 759.7068794532187,
+     "co_yield_percent": 0.0,
+     "total_carbon_out_kmol_h": 759.7068794532187,
+     "total_outlet_kmol_h": 108.52955420760267,
+     "water_outlet_kmol_h": 0.0,
+     "dry_outlet_kmol_h": 108.52955420760267,
+     "co_mole_fraction_dry": 0.0,
+     "note": "CO yield, carbon conversion and CO mole fraction are three different quantities and are reported separately. The mole fraction is on a dry basis: water and any unreacted solid carbon are excluded from the denominator.",
+     "solid_carbon_fed_kmol_h": 0.0,
+     "carbon_conversion_percent": null,
+     "carbon_conversion_note": "No solid carbon enters this case, so a carbon conversion is not defined here. Use reactant_conversion_percent for the key conversion; a carbon conversion of 100% would be meaningless."
+    },
+    "heat_duty_kW": 0.0,
+    "heat_duty_scope": "Adiabatic case: the duty is zero by construction and the outlet temperature is the computed result."
+   }
+  }
+ }
+}

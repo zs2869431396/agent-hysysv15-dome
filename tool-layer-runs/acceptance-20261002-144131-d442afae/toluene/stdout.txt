@@ -1,0 +1,11 @@
+status          : PASS
+reactor kind    : conversion
+case file       : agent-toluene.hsc (154141 bytes)
+element error   : {'C': 0.0, 'H': 0.0}
+mass error      : 1.085e-06
+conversion      : Toluene    50.0000 %
+conversion chk  : Toluene requested 50%, measured 50%
+CO yield        : 0.0000% (carbon fed 759.71 kmol/h)
+carbon conv.    : not applicable (no solid carbon in the feed)
+heat duty       : 0.00 kW
+result file     : C:\Users\azureuser\Desktop\dome\hysys-agent-repair-20261002-221846-7576bf\tool-layer-runs\acceptance-20261002-144131-d442afae\toluene\result.json

@@ -1,0 +1,58 @@
+{
+  "schema": "hysys-agent/spec/1",
+  "case_name": "agent-toluene",
+  "scenario": "toluene_disproportionation",
+  "fluid_package": {
+    "name": "TOL-PR",
+    "property_package": "PengRob",
+    "components": [
+      "Toluene",
+      "Benzene",
+      "o-Xylene",
+      "m-Xylene",
+      "p-Xylene"
+    ]
+  },
+  "feeds": [
+    {
+      "name": "FEED",
+      "basis": "molar_fraction",
+      "fractions": {
+        "Toluene": 1.0
+      },
+      "total_flow": 10000.0,
+      "total_flow_unit": "kg/h",
+      "temperature": 380.0,
+      "temperature_unit": "C",
+      "pressure": 2.5,
+      "pressure_unit": "MPa"
+    }
+  ],
+  "reactions": [
+    {
+      "name": "TOL-DISPROP",
+      "stoichiometry": {
+        "Toluene": -2.0,
+        "Benzene": 1.0,
+        "o-Xylene": 0.3333333333333333,
+        "m-Xylene": 0.3333333333333333,
+        "p-Xylene": 0.3333333333333333
+      },
+      "conversion_percent": 50.0,
+      "base_component": "Toluene",
+      "phase": "combined"
+    }
+  ],
+  "reactor": {
+    "name": "TOL-RX",
+    "kind": "conversion",
+    "thermal_mode": "adiabatic",
+    "pressure_drop_kPa": 0.0
+  },
+  "assumptions": [
+    "The o/m/p xylene split of one third each is a user-approved assumption, not an industrial selectivity or a thermodynamic prediction.",
+    "Adiabatic with zero pressure drop: the exam gives no outlet temperature or duty, so the outlet temperature is computed by HYSYS.",
+    "Peng-Robinson; 2.5 MPa treated as absolute."
+  ],
+  "open_questions": []
+}

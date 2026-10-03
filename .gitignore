@@ -1,0 +1,53 @@
+# ---- 凭据与远程会话（绝对不要提交）----
+*.rdp
+*.RDP
+.env
+*.env
+credentials*
+secrets*
+# 任何含密钥的文件都不应进入仓库；下面的模式是兜底，不是许可
+*key*.txt
+!RELEASE_MANIFEST.json
+
+# ---- HYSYS 产物 ----
+# 案例文件可能很大，且是运行产物而非源码。验收证据 ZIP 里已经带了需要的那些。
+*.hsc
+*.HSC
+*.hscz
+*.fzd
+*.xml
+
+# ---- 运行产物 ----
+# 每次运行的目录都不该进仓库；保留验收证据是因为它被 remote_check 引用。
+agent-runs/
+tool-layer-runs/*/
+!tool-layer-runs/acceptance-*/
+_demo/*.log
+_demo/_*.json
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# ---- 环境与编辑器 ----
+.venv/
+venv/
+env/
+.idea/
+.vscode/
+*.swp
+*~
+
+# ---- 归档（本地保留，不入库）----
+_archive/
+packages/
+
+# ---- 系统 ----
+Thumbs.db
+desktop.ini
+.DS_Store

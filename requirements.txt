@@ -1,0 +1,21 @@
+# 依赖表 —— 反应器选型 Agent + HYSYS 工具层
+#
+# 建立环境（与远程工作站保持同一 Python 版本）：
+#     conda create -n hysys-agent python=3.12 -y
+#     conda activate hysys-agent
+#     python -m pip install -r requirements.txt
+#
+# 版本已在本机实际安装并跑通测试后锁定（Python 3.12.15）。
+
+# --- Agent 层：数据契约与主流程 ---
+pydantic==2.13.5                    # 三层数据模型；同时提供 LLM 结构化输出的 JSON Schema
+langgraph==1.2.12                   # 主流程 StateGraph、interrupt 与 checkpoint
+langgraph-checkpoint-sqlite==3.1.1  # 让中断的运行在进程退出后仍可恢复
+langchain-core==1.6.6               # langgraph 的底层依赖，显式锁定以免升级漂移
+
+# --- 工具层 ---
+# 工具层本身只用标准库，离线预检与 110 项自检不需要任何第三方包。
+
+# --- 仅真机执行 HYSYS COM 时需要（在工作站上安装）---
+# 本机没有 HYSYS，装了也无法验证，所以在这里注释掉，避免本地误报"环境已就绪"。
+# pywin32>=306                      # 提供 pythoncom 与 win32com.client

@@ -1,0 +1,27 @@
+{
+  "tool_revision": "2026-10-03-equilibrium-integration-1",
+  "accepted_run": "20261003-105341-4467d9c9",
+  "accepted_status": "ALL_SCENARIOS_PASS",
+  "note": "Runtime Python files are byte-identical to remote accepted sources. Evidence/test files intentionally omitted.",
+  "sha256": {
+    "hysys_tools/__init__.py": "b2366bc487d0d94afee96598fa2b621cf884a8101bd0619d346dca477ef389a1",
+    "hysys_tools/__main__.py": "93d83f4af888721746b822c3e064d71ec8531308d796eac92ab8ea8d27e24679",
+    "hysys_tools/capabilities.py": "259c9e94d5123a39ac47f35afb693efc10cc7167716bf53304fc4f8dfe8aa35e",
+    "hysys_tools/core.py": "e23f151968c18ca2b851cc9f4b8c9bde76ab1cd6c4c3e7d6f07a1ba1f6946e88",
+    "hysys_tools/equilibrium.py": "cbe3089a0849a939bf547557a1aa85ed990f10783a368d5139a97f9a2d5c607c",
+    "hysys_tools/examples.py": "b2077d7b1acbf38089fd6b95a87c565c971c83eb3945668511cc34d003f50605",
+    "hysys_tools/main.py": "d0ab80500be3b4040f473a0197aa188cc69bbd798d12500423e5791e2204ea2f",
+    "hysys_tools/native_flow.py": "5e759b63f50348c829d66036aab04308f72a8e4e2688dfd287256553731b8c62",
+    "hysys_tools/precheck.py": "1da6dc12f8406c316e0ea2286a375d5b3dd86f42a6fc7e084a5a1616b586fe69",
+    "hysys_tools/reactor.py": "604a3a9ead0c36992cb45df74aa5926132e8982d176140920f9d9be1258dcb9a",
+    "hysys_tools/saturation.py": "332ce5ad9a9a8d34dded8b4298d44b4e53fc3b12d82134ea0aa6dfe3ac8fc675",
+    "hysys_tools/thermo_reference.py": "7bd6c4e98126276ef7218c348094a9c57cf282940ed5dde7201dfb5fc842aa5b",
+    "hysys_tools/validate.py": "8ca7608e6700c5d1bac8b7847a8e16dce2411b945602d59c6f9f60b49a67ae49",
+    "requirements.txt": "b711b45fa6b688e3d001df160b87426051964d17cdd651a607e2aa3b92b79aac",
+    "specs/coal-slurry-gasification.json": "9e84e4fd44ba4b62c3c7a5918ddf7aded2b6f8f1d82181d005f062fb9ab4fbe0",
+    "specs/methane-steam-reforming-600C.json": "72a3946fccdb6c9874291ab3c04a7ba04bfee98ec7ac9b6237fe046bc9fffea7",
+    "specs/methane-steam-reforming-710C.json": "963226b007636ce5b700566b2cc57a58c63662c97cfbeeea21b383ac41259a80",
+    "specs/toluene-disproportionation.json": "2aa99a1df03b732dd216b12e41b1c1c92411c6c7c76a635d0f5c9b9355925150",
+    "README.md": "3631226f60de719c7f8ba7cac9fa667d64801216a92d64bb34718d8dad3a76b5"
+  }
+}

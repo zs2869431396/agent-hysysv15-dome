@@ -1,0 +1,6 @@
+{
+  "archive": "D:\\BiShi\\hysys-agent-repair-20261003-184729-bb0ebe.zip",
+  "exit_code": 0,
+  "stdout": "Output folder: C:\\Users\\28694\\AppData\\Local\\Temp\\eq-release-check-pq_mnr7f\\hysys-agent-repair-20261003-184729-bb0ebe\\tool-layer-runs\\acceptance-20261003-184753-b27b2216\nselfcheck: FINISHED (exit 0)\nregression: FINISHED (exit 0)\nResult: OFFLINE_PASS_REMOTE_NOT_RUN\nCopy back this ZIP: C:\\Users\\28694\\AppData\\Local\\Temp\\eq-release-check-pq_mnr7f\\hysys-agent-repair-20261003-184729-bb0ebe\\tool-layer-runs\\acceptance-20261003-184753-b27b2216.zip\n",
+  "stderr": ""
+}

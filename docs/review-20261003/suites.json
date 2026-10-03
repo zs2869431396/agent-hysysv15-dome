@@ -1,0 +1,120 @@
+[
+  {
+    "command": [
+      "D:\\soft\\Anaconda3\\envs\\hysys-agent\\python.exe",
+      "-m",
+      "hysys_tools.selfcheck"
+    ],
+    "exit_code": 0,
+    "stdout": "HYSYS tool layer offline verification\nThese are NOT HYSYS results; they verify the tool layer itself.\n\n== pure logic ==\n  PASS  Water resolves to the H2O readback name\n  PASS  an unknown component resolves to None\n  PASS  unit conversion MPa -> kPa\n  PASS  unit conversion bar -> kPa\n  PASS  SMR equation balances\n  PASS  an unbalanced equation is detected\n  PASS  mass_fraction with Nm3/h is rejected\n  PASS  molar_flow basis converts directly\n  PASS  molar_fraction + a kg/h total converts through molar mass\n  PASS  an equimolar mixture with a mass total splits evenly\n  PASS  the composition handed to HYSYS is the stated 50/50\n  PASS  an equimolar mixture does not favour the lighter component\n  PASS  mass fractions still convert per component\n  PASS  mass_fraction -> molar flow for toluene\n  PASS  toluene feed matches the measured HYSYS molar flow\n\n== conversion reactor (toluene) ==\n  PASS  status PASS\n  PASS  case file written\n  PASS  result.json written\n  PASS  C/H element balance closed\n  PASS  specified conversion was verified independently\n  PASS  measured conversion matches 50%\n\n== gibbs reactor (reforming, isothermal 710 C) ==\n  PASS  status PASS\n  PASS  C/H/O element balance closed\n  PASS  CO yield block present when carbon is fed\n  PASS  CO yield uses carbon fed as the denominator\n\n== equilibrium reactor is refused, not silently wrong ==\n  PASS  status FAILED\n  PASS  error explains the Ln(K) source problem\n  PASS  error points at the gibbs alternative\n\n== non-converged output is rejected ==\n  PASS  status FAILED\n  PASS  a non-converged case is not reported as PASS\n\n== basis-edit ordering is enforced ==\n  PASS  configure_basis precedes stream creation\n\n== the reactor is reactivated before solving ==\n  PASS  build still passes with the watching fake\n  PASS  the first product fill happens while still ignored (as intended)\n  PASS  clearing IsIgnored triggers a recompute (not left at the sentinel)\n  PASS  solve step ran, so IsIgnored was cleared before it\n\n== a non-blank case is refused, not silently reused ==\n  PASS  a dirty case is rejected\n  PASS  the error names the real cause (not blank / already open)\n  PASS  the error suggests the fix (unique folder or close it)\n\n== a non-blank basis is refused too ==\n  PASS  a case with an existing fluid package is rejected\n  PASS  the basis error also names the cause\n\n== reported figures cannot be misread ==\n  PASS  reforming reports the methane conversion\n  PASS  reforming also reports the steam conversion under the HYSYS name\n  PASS  conversion keys use the readback spelling, not internal keys\n  PASS  carbon conversion is null when no solid carbon enters\n  PASS  the null carbon conversion carries an explanation\n  PASS  an isothermal case states the duty scope\n  PASS  toluene reports the toluene conversion\n  PASS  an adiabatic case states a different duty scope\n\n== the case is closed through the case object, not by name ==\n  PASS  the saved case is closed before the run returns\n  PASS  closing goes through case.Close\n  PASS  SaveChanges=False is passed so no save prompt can block the call\n  PASS  the case count actually dropped\n  PASS  the readback name is the unhelpful \"Case\", as on the workstation\n  PASS  closing works anyway, because it uses the object not the name\n\n== a failed Close never falls back to removing by name ==\n  PASS  a failed Close does not fail the whole run\n  PASS  the failed Close is reported as FAILED\n  PASS  no case was removed by name as a fallback\n  PASS  the operator is warned that a case may still be open\n\n== a failed build still tidies up its case ==\n  PASS  the run failed as intended\n  PASS  the failed case is saved for inspection\n  PASS  the failed case is closed, so nothing accumulates\n\n== input problems and result problems are distinguishable ==\n  PASS  a solver timeout is not classified as a spec problem\n  PASS  an unusable specification is classified separately\n\n== a pass-through outlet is caught as a RESULT problem ==\n  PASS  the run is rejected\n  PASS  it is classified as a result problem, not a spec problem\n  PASS  the message says the outlet equalled the inlet\n  PASS  the message tells the reader the spec was accepted\n  PASS  ResultCheckError is not a SpecError, so except SpecError will not swallow it\n  PASS  the pass-through case was saved for inspection\n\n== a foreign (non-blank) case is never modified or closed ==\n  PASS  the run is rejected\n  PASS  nothing was closed\n  PASS  no -FAILED.hsc was written for a case we do not own\n  PASS  the case was left out of basis-edit state\n  PASS  the operator is told a foreign case was left alone\n\n== offline pre-flight catches spec problems before any COM call ==\n  PASS  a valid spec passes\n  PASS  the pre-flight reports what it derived\n  PASS  it fails\n  PASS  a second feed is reported rather than silently ignored\n  PASS  fractions that do not sum to 1 are reported\n  PASS  a missing required field is reported\n  PASS  an unsupported reactor kind is reported\n  PASS  every problem is reported at once, not just the first\n  PASS  a missing field is NOT classified as a runtime KeyError\n  PASS  a feed component missing from the package is reported up front\n  PASS  an unbalanced reaction is reported offline\n  PASS  the unusable equilibrium path is refused before a case is built\n  PASS  the refusal points at the gibbs alternative\n  PASS  gibbs with reactions warns they will not be used\n\n== combinations that cannot work are refused, not left to fail late ==\n  PASS  gibbs + adiabatic is refused (never verified, would time out)\n  PASS  a negative feed pressure is refused\n  PASS  a zero feed pressure is refused\n  PASS  a temperature below absolute zero is refused\n  PASS  a molar_mass override is refused with the reason\n\n== the pre-check never crashes, whatever the field types are ==\n  PASS  every malformed spec yields a JSON report instead of a traceback\n  PASS  all 17 malformed cases were rejected\n\n== an accepted alias is one the executor can actually use ==\n  PASS  the display spelling Peng-Robinson is accepted\n  PASS  it is resolved to the internal name the executor sends\n  PASS  an unknown property package is refused, not guessed\n  PASS  the alias 'CH4' is accepted and resolves to 'Methane'\n  PASS  the alias 'steam' is accepted and resolves to 'Water'\n  PASS  the alias 'CO2' is accepted and resolves to 'CO2'\n  PASS  the alias 'methane' is accepted and resolves to 'Methane'\n\n== the full run refuses a bad spec without creating a case ==\n  PASS  build_case rejects it\n  PASS  classified as a specification problem\n  PASS  no case was created, so nothing was left open\n  PASS  the pre-flight warnings are carried into the result\n  PASS  a spec error is not masked by the connection step\n\n== a stale case is classified as an environment problem ==\n  PASS  the run is rejected\n  PASS  classified as environment, not specification\n  PASS  the message tells the caller to use a new folder\n\n110 passed, 0 failed\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "D:\\soft\\Anaconda3\\envs\\hysys-agent\\python.exe",
+      "-m",
+      "unittest",
+      "hysys_tools.test_reliability"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "..................................\n----------------------------------------------------------------------\nRan 34 tests in 0.210s\n\nOK\n"
+  },
+  {
+    "command": [
+      "D:\\soft\\Anaconda3\\envs\\hysys-agent\\python.exe",
+      "-m",
+      "unittest",
+      "reactor_agent.test_llm"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ".......................\n----------------------------------------------------------------------\nRan 23 tests in 4.986s\n\nOK\n"
+  },
+  {
+    "command": [
+      "D:\\soft\\Anaconda3\\envs\\hysys-agent\\python.exe",
+      "-m",
+      "unittest",
+      "reactor_agent.test_extraction"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "............................\n----------------------------------------------------------------------\nRan 28 tests in 0.002s\n\nOK\n"
+  },
+  {
+    "command": [
+      "D:\\soft\\Anaconda3\\envs\\hysys-agent\\python.exe",
+      "-m",
+      "unittest",
+      "reactor_agent.test_normalize"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "..............................................\n----------------------------------------------------------------------\nRan 46 tests in 0.021s\n\nOK\n"
+  },
+  {
+    "command": [
+      "D:\\soft\\Anaconda3\\envs\\hysys-agent\\python.exe",
+      "-m",
+      "unittest",
+      "reactor_agent.test_selection"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "..................\n----------------------------------------------------------------------\nRan 18 tests in 0.001s\n\nOK\n"
+  },
+  {
+    "command": [
+      "D:\\soft\\Anaconda3\\envs\\hysys-agent\\python.exe",
+      "-m",
+      "unittest",
+      "reactor_agent.test_compiler"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ".......................\n----------------------------------------------------------------------\nRan 23 tests in 0.004s\n\nOK\n"
+  },
+  {
+    "command": [
+      "D:\\soft\\Anaconda3\\envs\\hysys-agent\\python.exe",
+      "-m",
+      "unittest",
+      "reactor_agent.test_adapters"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ".............................................\n----------------------------------------------------------------------\nRan 45 tests in 0.107s\n\nOK\n"
+  },
+  {
+    "command": [
+      "D:\\soft\\Anaconda3\\envs\\hysys-agent\\python.exe",
+      "-m",
+      "unittest",
+      "reactor_agent.test_pipeline"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": ".......................\n----------------------------------------------------------------------\nRan 23 tests in 0.027s\n\nOK\n"
+  },
+  {
+    "command": [
+      "D:\\soft\\Anaconda3\\envs\\hysys-agent\\python.exe",
+      "-m",
+      "unittest",
+      "reactor_agent.test_graph"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "....................................\n----------------------------------------------------------------------\nRan 36 tests in 0.359s\n\nOK\n"
+  },
+  {
+    "command": [
+      "D:\\soft\\Anaconda3\\envs\\hysys-agent\\python.exe",
+      "scripts/test_build_submission.py"
+    ],
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "test_acceptance_evidence_is_included (__main__.Collection.test_acceptance_evidence_is_included) ... ok\ntest_local_run_output_is_not_packaged (__main__.Collection.test_local_run_output_is_not_packaged)\nDry-run artifacts are working files, not deliverables. ... ok\ntest_no_credentials_in_what_would_be_packaged (__main__.Collection.test_no_credentials_in_what_would_be_packaged) ... ok\ntest_no_excluded_file_reaches_the_collection (__main__.Collection.test_no_excluded_file_reaches_the_collection) ... ok\ntest_the_collection_is_a_sane_size (__main__.Collection.test_the_collection_is_a_sane_size)\nA submission that balloons is usually a stray artifact. ... ok\ntest_the_real_project_collects_the_expected_pieces (__main__.Collection.test_the_real_project_collects_the_expected_pieces)\nThe allowlist must actually cover both layers and the documentation. ... ok\ntest_a_bearer_token_is_detected (__main__.CredentialScan.test_a_bearer_token_is_detected) ... ok\ntest_a_key_in_a_file_is_detected (__main__.CredentialScan.test_a_key_in_a_file_is_detected) ... ok\ntest_a_scanner_is_not_reported_as_a_leak (__main__.CredentialScan.test_a_scanner_is_not_reported_as_a_leak)\nThe scanner source contains the patterns verbatim; it must not trip. ... ok\ntest_an_rdp_endpoint_in_a_text_file_is_detected (__main__.CredentialScan.test_an_rdp_endpoint_in_a_text_file_is_detected) ... ok\ntest_binary_content_is_skipped_rather_than_crashing (__main__.CredentialScan.test_binary_content_is_skipped_rather_than_crashing) ... ok\ntest_clean_text_passes (__main__.CredentialScan.test_clean_text_passes) ... ok\ntest_a_remote_desktop_file_is_never_packaged (__main__.Exclusions.test_a_remote_desktop_file_is_never_packaged)\nIt carries the workstation address. ... ok\ntest_archives_and_local_archives_are_never_packaged (__main__.Exclusions.test_archives_and_local_archives_are_never_packaged) ... ok\ntest_byte_code_and_caches_are_never_packaged (__main__.Exclusions.test_byte_code_and_caches_are_never_packaged) ... ok\ntest_hysys_case_files_are_never_packaged (__main__.Exclusions.test_hysys_case_files_are_never_packaged) ... ok\ntest_ordinary_source_is_not_excluded (__main__.Exclusions.test_ordinary_source_is_not_excluded) ... ok\n\n----------------------------------------------------------------------\nRan 17 tests in 0.170s\n\nOK\n"
+  }
+]

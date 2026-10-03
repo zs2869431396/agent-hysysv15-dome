@@ -1,0 +1,71 @@
+{
+  "schema": "hysys-agent/spec/1",
+  "case_name": "agent-smr-equilibrium-600C",
+  "scenario": "methane_steam_reforming",
+  "fluid_package": {
+    "name": "SMR-PR",
+    "property_package": "PengRob",
+    "components": [
+      "Methane",
+      "Water",
+      "CO",
+      "Hydrogen",
+      "CO2"
+    ]
+  },
+  "feeds": [
+    {
+      "name": "FEED",
+      "basis": "molar_flow",
+      "flows": {
+        "Methane": 1000.0,
+        "Water": 2700.0
+      },
+      "temperature": 520.0,
+      "temperature_unit": "C",
+      "pressure": 13.5,
+      "pressure_unit": "bar"
+    }
+  ],
+  "reactions": [
+    {
+      "name": "SMR-EQ",
+      "phase": "vapour",
+      "stoichiometry": {
+        "Methane": -1,
+        "Water": -1,
+        "CO": 1,
+        "Hydrogen": 3
+      }
+    },
+    {
+      "name": "WGS-EQ",
+      "phase": "vapour",
+      "stoichiometry": {
+        "CO": -1,
+        "Water": -1,
+        "CO2": 1,
+        "Hydrogen": 1
+      }
+    }
+  ],
+  "reactor": {
+    "name": "SMR-EQ",
+    "kind": "equilibrium",
+    "thermal_mode": "isothermal",
+    "outlet_temperature": 600.0,
+    "outlet_temperature_unit": "C",
+    "pressure_drop_kPa": 0.0
+  },
+  "assumptions": [
+    "Gas-phase Equilibrium with ln(K) fitted from HYSYS Gibbs data on a 1 atm reference, converted to bar partial-pressure basis. Gibbs is retained as a separate cross-check.",
+    "Outlet temperature is held by an external heat stream: this is an isothermal case and the reported duty is external heat, not adiabatic.",
+    "The reported duty is the REACTOR duty, not the heat of reaction alone: since the feed enters at 520 C and leaves at the stated outlet temperature, it includes the sensible heat of raising the feed to that temperature as well as the endothermic heat of reaction. The exam does not define which figure is wanted, so the scope is stated explicitly.",
+    "13.5 bar treated as absolute; zero pressure drop.",
+    "Feed 1000/2700 kmol/h is a demonstration design basis (about 128 kt/y methane at 8000 h/y), not an actual plant figure.",
+    "The key conversion for this scenario is the METHANE conversion, reported in checks.reactant_conversion_percent. A carbon conversion is not defined here because no solid carbon enters."
+  ],
+  "open_questions": [
+    "Earlier probes returned Gibbs temperature-limit numbers 25/426.85 without confirmed units. Do not label them K or C until the property units are verified. A good ln(K) fit and Q/K agreement do not prove the underlying Gibbs data are valid at the operating temperature."
+  ]
+}

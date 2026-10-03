@@ -1,0 +1,276 @@
+{
+  "schema": "hysys-agent/result/1",
+  "tool_revision": "2026-10-02-reliability-1",
+  "status": "PASS",
+  "started": "2026-10-02T14:41:47",
+  "reactor_kind": "gibbs",
+  "assumptions": [
+    "The Gibbs reactor is used rather than an Equilibrium reactor: this workstation cannot set the Equilibrium Ln(K) source to Gibbs (it stays FixedK = 2), so an Equilibrium reactor would silently use a fixed K. The exam allows whichever reactor type fits, and a reversible equilibrium-controlled high-temperature system is what Gibbs models.",
+    "Outlet temperature is held by an external heat stream: this is an isothermal case and the reported duty is external heat, not adiabatic.",
+    "The reported duty is the REACTOR duty, not the heat of reaction alone: since the feed enters at 520 C and leaves at the stated outlet temperature, it includes the sensible heat of raising the feed to that temperature as well as the endothermic heat of reaction. The exam does not define which figure is wanted, so the scope is stated explicitly.",
+    "13.5 bar treated as absolute; zero pressure drop.",
+    "Feed 1000/2700 kmol/h is a demonstration design basis (about 128 kt/y methane at 8000 h/y), not an actual plant figure.",
+    "The key conversion for this scenario is the METHANE conversion, reported in checks.reactant_conversion_percent. A carbon conversion is not defined here because no solid carbon enters."
+  ],
+  "open_questions": [
+    "The component Gibbs data temperature limits read back as 25/426.85 K, below the 983.15 K needed for 710 C, so the equilibrium constants at 600/710 C may be extrapolated values. This affects how accurate the results are and must be stated in the report."
+  ],
+  "blocking_questions": [],
+  "warnings": [
+    "1 open question(s) recorded in the spec: The component Gibbs data temperature limits read back as 25/426.85 K, below the 983.15 K needed for 710 C, so the equilibrium constants at 600/710 C may be extrapolated values. This affects how accurate the results are and must be stated in the report."
+  ],
+  "precheck": {
+    "ok": true,
+    "warnings": [
+      "1 open question(s) recorded in the spec: The component Gibbs data temperature limits read back as 25/426.85 K, below the 983.15 K needed for 710 C, so the equilibrium constants at 600/710 C may be extrapolated values. This affects how accurate the results are and must be stated in the report."
+    ]
+  },
+  "case_file": "agent-smr-710C.hsc",
+  "case_file_bytes": 154283,
+  "readback_component_names": [
+    "Methane",
+    "H2O",
+    "CO",
+    "Hydrogen",
+    "CO2"
+  ],
+  "feed_molar_flows_kmol_h": {
+    "Methane": 999.9999999999999,
+    "H2O": 2699.9999999999995
+  },
+  "outlet": {
+    "VAPOUR": {
+      "molar_flow_kmol_h": 4780.716185884519,
+      "temperature_C": 710.0,
+      "pressure_kPa": 1350.0,
+      "mass_flow_kg_h": 64684.06114187387,
+      "mole_fractions": {
+        "Methane": 0.09614498940867292,
+        "H2O": 0.38444111590604096,
+        "CO": 0.045729560742705296,
+        "Hydrogen": 0.4063852035996876,
+        "CO2": 0.06729913034289305
+      }
+    },
+    "LIQUID": {
+      "molar_flow_kmol_h": 0.0
+    }
+  },
+  "component_flows_kmol_h": {
+    "Methane": 459.6419070577383,
+    "H2O": 1837.9038653315165,
+    "CO": 218.6200512160405,
+    "Hydrogen": 1942.8123205530023,
+    "CO2": 321.7380417262208
+  },
+  "heat_duty_kW": 39988.61475671525,
+  "solver_is_solving": false,
+  "solver_evidence": {
+    "stable_reads": 3,
+    "required_stable_reads": 3,
+    "polls": 3,
+    "absolute_stability_tolerance": 1e-09,
+    "checks": "phase flows, composition, temperature, pressure, mass flow, duty",
+    "note": "Stable readback and idle solver; not an independent proof of thermodynamic equilibrium."
+  },
+  "checks": {
+    "element_relative_error": {
+      "C": -0.0,
+      "H": -1e-15,
+      "O": -1e-15
+    },
+    "worst_element_relative_error": 7.740380440620668e-16,
+    "inlet_mass_kg_h": 64683.49999999999,
+    "outlet_mass_kg_h": 64683.49999999996,
+    "mass_relative_error": -4.499421097611246e-16,
+    "specified_conversion": [],
+    "reactant_conversion_percent": {
+      "Methane": 54.03580929422617,
+      "H2O": 31.929486469203084
+    },
+    "co_yield": {
+      "definition": "(n_CO_out - n_CO_in) / n_C_feed * 100%",
+      "co_produced_kmol_h": 218.6200512160405,
+      "carbon_fed_kmol_h": 999.9999999999999,
+      "co_yield_percent": 21.862005121604053,
+      "total_carbon_out_kmol_h": 999.9999999999995,
+      "total_outlet_kmol_h": 4780.716185884518,
+      "water_outlet_kmol_h": 1837.9038653315165,
+      "dry_outlet_kmol_h": 2942.812320553002,
+      "co_mole_fraction_dry": 0.07428949841251116,
+      "note": "CO yield, carbon conversion and CO mole fraction are three different quantities and are reported separately. The mole fraction is on a dry basis: water and any unreacted solid carbon are excluded from the denominator.",
+      "solid_carbon_fed_kmol_h": 0.0,
+      "carbon_conversion_percent": null,
+      "carbon_conversion_note": "No solid carbon enters this case, so a carbon conversion is not defined here. Use reactant_conversion_percent for the key conversion; a carbon conversion of 100% would be meaningless."
+    },
+    "heat_duty_kW": 39988.61475671525,
+    "heat_duty_scope": "External heat needed to hold the stated outlet temperature. For an isothermal case this includes sensible heating of the feed from its inlet temperature to the outlet temperature as well as the heat of reaction, so it is the reactor duty, not the heat of reaction alone."
+  },
+  "notes": [],
+  "steps": [
+    {
+      "step": "create_blank_case",
+      "status": "OK"
+    },
+    {
+      "step": "create_blank_case",
+      "status": "OK",
+      "detail": {
+        "case_file": "agent-smr-710C.hsc",
+        "active_document_used": false
+      }
+    },
+    {
+      "step": "configure_basis",
+      "status": "OK",
+      "detail": {
+        "property_package_requested": "PengRob",
+        "property_package_readback": "Peng-Robinson",
+        "components_readback": [
+          "Methane",
+          "H2O",
+          "CO",
+          "Hydrogen",
+          "CO2"
+        ],
+        "basis_still_being_edited": true,
+        "case_ownership_established": true
+      }
+    },
+    {
+      "step": "end_basis_change",
+      "status": "OK",
+      "detail": {
+        "is_changing_basis": false
+      }
+    },
+    {
+      "step": "create_streams_and_reactor",
+      "status": "OK",
+      "detail": {
+        "reactor_kind": "gibbs",
+        "reactor_type_name": "gibbsreactorop",
+        "feed_molar_flows_kmol_h": {
+          "Methane": 1000.0,
+          "Water": 2700.0
+        },
+        "feed_total_kmol_h": 3700.0,
+        "feed_flow_basis": "molar_flow",
+        "hysys_molar_flow_kmol_h": 3699.9999999999995,
+        "hysys_mass_flow_kg_h": 64683.67137908934,
+        "thermal_mode": "isothermal",
+        "outlet_temperature_C": 710.0,
+        "connections": [
+          {
+            "call": "feed_state_before_attach",
+            "fraction_sum": 1.0,
+            "fractions_finite": true,
+            "temperature_is_known": true,
+            "pressure_is_known": true,
+            "molar_flow_is_known": true,
+            "temperature_C": 520.0,
+            "pressure_kPa": 1350.0,
+            "molar_flow_kmol_h": 3699.9999999999995,
+            "result": "OK"
+          },
+          {
+            "call": "hold_ignored",
+            "result": "OK",
+            "value": true
+          },
+          {
+            "call": "feeds_add",
+            "result": "OK",
+            "value": 1
+          },
+          {
+            "call": "set_vapour_product",
+            "result": "OK",
+            "value": "VAPOUR"
+          },
+          {
+            "call": "set_liquid_product",
+            "result": "OK",
+            "value": "LIQUID"
+          },
+          {
+            "call": "set_energy_stream",
+            "result": "OK",
+            "value": "DUTY"
+          },
+          {
+            "call": "set_pressure_drop",
+            "result": "OK",
+            "value": 0.0
+          },
+          {
+            "call": "set_outlet_temperature",
+            "result": "OK",
+            "value": 710.0
+          }
+        ]
+      }
+    },
+    {
+      "step": "reactor_connected",
+      "status": "OK",
+      "detail": {
+        "reaction_set_attached": false
+      }
+    },
+    {
+      "step": "release_ignored_before_solve",
+      "status": "OK",
+      "detail": {
+        "call": "release_ignored",
+        "result": "OK",
+        "value": false
+      }
+    },
+    {
+      "step": "solve_and_read_outputs",
+      "status": "OK",
+      "detail": {
+        "component_flows_kmol_h": {
+          "Methane": 459.6419070577383,
+          "H2O": 1837.9038653315165,
+          "CO": 218.6200512160405,
+          "Hydrogen": 1942.8123205530023,
+          "CO2": 321.7380417262208
+        },
+        "heat_duty_kW": 39988.61475671525,
+        "solver_is_solving": false,
+        "solver_evidence": {
+          "stable_reads": 3,
+          "required_stable_reads": 3,
+          "polls": 3,
+          "absolute_stability_tolerance": 1e-09,
+          "checks": "phase flows, composition, temperature, pressure, mass flow, duty",
+          "note": "Stable readback and idle solver; not an independent proof of thermodynamic equilibrium."
+        }
+      }
+    },
+    {
+      "step": "verify_results",
+      "status": "OK"
+    },
+    {
+      "step": "save_case",
+      "status": "OK"
+    },
+    {
+      "step": "close_saved_case",
+      "status": "OK",
+      "detail": {
+        "call": "close_saved_case",
+        "case_name_readback": "Case",
+        "case_count_before": 1,
+        "method": "case.Close(SaveChanges=False)",
+        "result": "OK",
+        "case_count_after": 0,
+        "case_count_change": 1
+      }
+    }
+  ],
+  "finished": "2026-10-02T14:41:49"
+}

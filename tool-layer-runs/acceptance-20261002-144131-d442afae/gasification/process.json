@@ -1,0 +1,15 @@
+{
+  "label": "gasification",
+  "arguments": [
+    "-m",
+    "hysys_tools",
+    "--spec",
+    "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261002-221846-7576bf\\tool-layer-runs\\acceptance-20261002-144131-d442afae\\specs\\coal-slurry-gasification.json",
+    "--folder",
+    "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261002-221846-7576bf\\tool-layer-runs\\acceptance-20261002-144131-d442afae\\gasification"
+  ],
+  "timeout_seconds": 180.0,
+  "exit_code": 1,
+  "status": "FINISHED",
+  "elapsed_seconds": 0.125
+}

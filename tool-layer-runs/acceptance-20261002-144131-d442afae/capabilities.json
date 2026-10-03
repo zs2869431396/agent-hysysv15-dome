@@ -1,0 +1,165 @@
+{
+  "schema": "hysys-agent/spec/1",
+  "tool_revision": "2026-10-02-reliability-1",
+  "current_revision_remote_validation": "pending",
+  "max_feeds": 1,
+  "max_conversion_reactions": 1,
+  "parallel_hysys_calls_supported": false,
+  "capability_combinations": [
+    {
+      "kind": "conversion",
+      "thermal_mode": "adiabatic",
+      "scope": "single fixed-conversion toluene reaction",
+      "status": "historically_verified",
+      "evidence": "tool-layer-runs/20261002-111439/toluene/result.json"
+    },
+    {
+      "kind": "conversion",
+      "thermal_mode": "isothermal",
+      "scope": "single reaction",
+      "status": "experimental"
+    },
+    {
+      "kind": "conversion",
+      "scope": "multiple reactions",
+      "status": "unsupported"
+    },
+    {
+      "kind": "conversion",
+      "scope": "temperature-dependent conversion coefficients",
+      "status": "experimental",
+      "independent_conversion_check": false
+    },
+    {
+      "kind": "gibbs",
+      "thermal_mode": "isothermal",
+      "scope": "CH4/H2O/CO/H2/CO2 steam reforming",
+      "status": "historically_verified",
+      "evidence": [
+        "tool-layer-runs/20261002-111439/smr-710C/result.json",
+        "tool-layer-runs/20261002-111439/smr-600C/result.json"
+      ]
+    },
+    {
+      "kind": "gibbs",
+      "thermal_mode": "isothermal",
+      "scope": "solid-carbon gasification",
+      "status": "experimental",
+      "note": "Requires a defined feed basis and verification of solid-phase readback."
+    },
+    {
+      "kind": "gibbs",
+      "thermal_mode": "adiabatic",
+      "status": "unsupported"
+    },
+    {
+      "kind": "equilibrium",
+      "status": "unsupported",
+      "reason": "The attempted Gibbs Ln(K) source could not be set; no validated alternative."
+    },
+    {
+      "kind": "cstr",
+      "status": "unsupported"
+    },
+    {
+      "kind": "pfr",
+      "status": "unsupported"
+    }
+  ],
+  "reactor_kinds": {
+    "conversion": "Reaction equations plus a specified conversion. Needs reactions[].stoichiometry, conversion_percent (or conversion_coefficients) and base_component. VERIFIED on the workstation for a single fixed-conversion adiabatic toluene reaction; other combinations are not implied.",
+    "equilibrium": "Reaction equations plus a K source. NOT USABLE on this workstation: the Gibbs Ln(K) source cannot be set (it stays FixedK=2), so the tool layer refuses this path rather than silently using a fixed K.",
+    "gibbs": "No reaction equations. Product distribution comes from free energy minimisation. Needs the full candidate component list in fluid_package.components. Historically verified for fixed-temperature steam reforming; solid carbon is experimental."
+  },
+  "feed_basis": [
+    "molar_fraction",
+    "mass_fraction",
+    "molar_flow",
+    "mass_flow"
+  ],
+  "flow_units": {
+    "molar": [
+      "kgmol/h",
+      "kgmole/h",
+      "kmol/h",
+      "kmol/hr",
+      "mol/h"
+    ],
+    "mass": [
+      "kg/h",
+      "kg/hr",
+      "kgh",
+      "t/h",
+      "ton/h"
+    ],
+    "note": "A total_flow whose unit is neither molar nor mass is refused: volumetric units such as Nm3/h cannot be converted without stating the standard conditions and which stream they refer to."
+  },
+  "thermal_modes": [
+    "adiabatic (duty fixed at 0 kW, outlet T computed)",
+    "isothermal (outlet_temperature required; the reported duty includes sensible heating of the feed, not only the heat of reaction)"
+  ],
+  "units": {
+    "temperature": [
+      "C",
+      "K",
+      "F"
+    ],
+    "pressure": [
+      "kPa",
+      "Pa",
+      "MPa",
+      "bar",
+      "mbar",
+      "atm",
+      "psi"
+    ]
+  },
+  "components": {
+    "accepted_spellings": [
+      "CH4",
+      "CO2",
+      "H2",
+      "H2O",
+      "N2",
+      "O2",
+      "benzene",
+      "carbon",
+      "carbon dioxide",
+      "carbon monoxide",
+      "coal",
+      "graphite",
+      "hydrogen",
+      "m-xylene",
+      "methane",
+      "nitrogen",
+      "o-xylene",
+      "oxygen",
+      "p-xylene",
+      "steam",
+      "toluene",
+      "water"
+    ],
+    "hysys_library_names": [
+      "Benzene",
+      "CO",
+      "CO2",
+      "Carbon",
+      "Hydrogen",
+      "Methane",
+      "Nitrogen",
+      "Oxygen",
+      "Toluene",
+      "Water",
+      "m-Xylene",
+      "o-Xylene",
+      "p-Xylene"
+    ],
+    "note": "A component is passed to HYSYS under its library name, and reaction reactants are addressed by the name HYSYS reports back (water reads back as H2O), never by the requested spelling."
+  },
+  "one_case_per_call": true,
+  "notes": [
+    "One call builds one case and one operating condition. For several conditions, call once per condition.",
+    "Each run must use a NEW output folder. Reusing one makes HYSYS resolve the duplicate case file path against a case that is still open, and the \"new\" case then comes back non-blank.",
+    "Call --validate-only before --spec to check a specification offline in milliseconds."
+  ]
+}

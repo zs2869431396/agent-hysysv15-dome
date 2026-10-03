@@ -1,0 +1,138 @@
+{
+  "tool_revision": "2026-10-02-reliability-1",
+  "run_id": "20261002-144131-d442afae",
+  "status": "BASELINE_PASS_GASIFICATION_STILL_BLOCKED",
+  "offline": false,
+  "python": "3.12.4 (tags/v3.12.4:8e8a4ba, Jun  6 2024, 19:30:16) [MSC v.1940 64 bit (AMD64)]",
+  "platform": "Windows-10-10.0.19045-SP0",
+  "started_local": "2026-10-02T14:41:31.931162+00:00",
+  "checks": [
+    {
+      "label": "selfcheck",
+      "arguments": [
+        "-m",
+        "hysys_tools.selfcheck"
+      ],
+      "timeout_seconds": 90,
+      "exit_code": 0,
+      "status": "FINISHED",
+      "elapsed_seconds": 12.657
+    },
+    {
+      "label": "regression",
+      "arguments": [
+        "-m",
+        "unittest",
+        "hysys_tools.test_reliability",
+        "-v"
+      ],
+      "timeout_seconds": 90,
+      "exit_code": 0,
+      "status": "FINISHED",
+      "elapsed_seconds": 0.453
+    },
+    {
+      "label": "health-before",
+      "arguments": [
+        "-m",
+        "hysys_tools",
+        "--health-check"
+      ],
+      "timeout_seconds": 30,
+      "exit_code": 0,
+      "status": "FINISHED",
+      "elapsed_seconds": 0.172
+    },
+    {
+      "label": "toluene",
+      "arguments": [
+        "-m",
+        "hysys_tools",
+        "--spec",
+        "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261002-221846-7576bf\\tool-layer-runs\\acceptance-20261002-144131-d442afae\\specs\\toluene-disproportionation.json",
+        "--folder",
+        "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261002-221846-7576bf\\tool-layer-runs\\acceptance-20261002-144131-d442afae\\toluene"
+      ],
+      "timeout_seconds": 180.0,
+      "exit_code": 0,
+      "status": "FINISHED",
+      "elapsed_seconds": 2.313,
+      "tool_status": "PASS",
+      "baseline_failures": [],
+      "acceptance": "PASS"
+    },
+    {
+      "label": "smr-710C",
+      "arguments": [
+        "-m",
+        "hysys_tools",
+        "--spec",
+        "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261002-221846-7576bf\\tool-layer-runs\\acceptance-20261002-144131-d442afae\\specs\\methane-steam-reforming-710C.json",
+        "--folder",
+        "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261002-221846-7576bf\\tool-layer-runs\\acceptance-20261002-144131-d442afae\\smr-710C"
+      ],
+      "timeout_seconds": 180.0,
+      "exit_code": 0,
+      "status": "FINISHED",
+      "elapsed_seconds": 2.406,
+      "tool_status": "PASS",
+      "baseline_failures": [],
+      "acceptance": "PASS",
+      "warnings": [
+        "1 open question(s) recorded in the spec: The component Gibbs data temperature limits read back as 25/426.85 K, below the 983.15 K needed for 710 C, so the equilibrium constants at 600/710 C may be extrapolated values. This affects how accurate the results are and must be stated in the report."
+      ]
+    },
+    {
+      "label": "smr-600C",
+      "arguments": [
+        "-m",
+        "hysys_tools",
+        "--spec",
+        "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261002-221846-7576bf\\tool-layer-runs\\acceptance-20261002-144131-d442afae\\specs\\methane-steam-reforming-600C.json",
+        "--folder",
+        "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261002-221846-7576bf\\tool-layer-runs\\acceptance-20261002-144131-d442afae\\smr-600C"
+      ],
+      "timeout_seconds": 180.0,
+      "exit_code": 0,
+      "status": "FINISHED",
+      "elapsed_seconds": 2.282,
+      "tool_status": "PASS",
+      "baseline_failures": [],
+      "acceptance": "PASS",
+      "warnings": [
+        "1 open question(s) recorded in the spec: The component Gibbs data temperature limits read back as 25/426.85 K, below the 983.15 K needed for 710 C, so the equilibrium constants at 600/710 C may be extrapolated values. This affects how accurate the results are and must be stated in the report."
+      ]
+    },
+    {
+      "label": "gasification",
+      "arguments": [
+        "-m",
+        "hysys_tools",
+        "--spec",
+        "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261002-221846-7576bf\\tool-layer-runs\\acceptance-20261002-144131-d442afae\\specs\\coal-slurry-gasification.json",
+        "--folder",
+        "C:\\Users\\azureuser\\Desktop\\dome\\hysys-agent-repair-20261002-221846-7576bf\\tool-layer-runs\\acceptance-20261002-144131-d442afae\\gasification"
+      ],
+      "timeout_seconds": 180.0,
+      "exit_code": 1,
+      "status": "FINISHED",
+      "elapsed_seconds": 0.125,
+      "tool_status": "FAILED",
+      "acceptance": "EXPECTED_REJECTION"
+    },
+    {
+      "label": "health-after",
+      "arguments": [
+        "-m",
+        "hysys_tools",
+        "--health-check"
+      ],
+      "timeout_seconds": 30,
+      "exit_code": 0,
+      "status": "FINISHED",
+      "elapsed_seconds": 0.187
+    }
+  ],
+  "gasification_exam_status": "BLOCKED_INPUT_NOT_COMPLETED",
+  "finished_local": "2026-10-02T14:41:52.630923+00:00"
+}

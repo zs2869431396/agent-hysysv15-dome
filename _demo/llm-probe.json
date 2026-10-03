@@ -1,0 +1,77 @@
+{
+  "base": "https://tokenrhythm.studio/v1",
+  "key_present": true,
+  "probes": {
+    "models": {
+      "http": 200,
+      "count": 23,
+      "ids": [
+        "glm-5.1",
+        "minimax-m2.7",
+        "kimi-k2.6",
+        "mimo-v2.5-pro",
+        "qwen3.7-max",
+        "kimi-k2.7-code",
+        "glm-5.2",
+        "qwen3.8-max",
+        "deepseek-v4-flash-0731",
+        "seed-2.1-turbo",
+        "seed-2.1-pro",
+        "deepseek-v4-pro-0813",
+        "glm-5.3",
+        "qwen3.7-flash",
+        "qwen3.8-27b",
+        "kimi-k3",
+        "longcat-2.0",
+        "glm-5.3-flash",
+        "qwen3.8-flash",
+        "deepseek-flash",
+        "glm-5.3-flashx",
+        "mimo-v2.6-pro",
+        "mimo-v2.6-flash"
+      ]
+    },
+    "plain_chat": {
+      "http": 200,
+      "seconds": 7.08,
+      "reply_head": "",
+      "usage": {
+        "completion_tokens": 300,
+        "prompt_tokens": 124,
+        "total_tokens": 424,
+        "completion_tokens_details": {
+          "reasoning_tokens": 300,
+          "text_tokens": 300
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "text_tokens": 124
+        }
+      },
+      "error": null
+    },
+    "json_object": {
+      "http": 200,
+      "seconds": 7.49,
+      "parsed": true,
+      "result": {
+        "components": [
+          "C7H8",
+          "C6H6",
+          "C8H10"
+        ],
+        "conversion_percent": 50,
+        "feed_mass_kg_per_h": 10000
+      },
+      "error": null
+    },
+    "pydantic_schema_available": true,
+    "json_schema": {
+      "http": 200,
+      "seconds": 21.33,
+      "result": "",
+      "error": null
+    }
+  },
+  "probe_model": "qwen3.8-flash"
+}
