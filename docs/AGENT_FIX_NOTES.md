@@ -470,6 +470,62 @@ Gibbs 对照没有被删掉：改为新测试 `test_gibbs_comparison_carries_no_
 
 **测试数量**：`reactor_agent` 329 → **337**（+8），全部通过；`hysys_tools` 184 仍全部通过。
 
+---
+
+## 步骤 10：`reactor_agent/__main__.py` 交互式追问与 CLI
+
+### 改动
+
+- **10.1 参数**：`--graph` 保留为无操作（帮助文字写"默认行为，保留以兼容旧脚本"）；
+  新增 `--single-pass`、`--accept-defaults`、`--no-input`；`--answer ID=VALUE` 不带
+  `--out` 时自动定位最近一次暂停的运行。**默认路径现在是状态图**（原先需要 `--graph`）。
+- **10.2 场景表**：甲苯 `phase` 由 `'liquid'` 改为 `'unknown'`（相态只影响有动力学时的
+  CSTR/PFR 选择，本题没有动力学，写死 liquid 没有依据；spec 里的反应相态已由步骤 5
+  固定为 combined）。**三道题的 `text` 一字未改**，只把 `label` 改成 ASCII 的
+  `toluene`/`smr`/`gasification`，让运行目录名、`paused.json` 的 label 与
+  `latest_paused_run` 的前缀一致。
+- **10.3 可测试的作答循环**：新增 `drive_graph(graph, first_input, config, answer_fn)`，
+  先 `invoke`，只要结果里有 `__interrupt__` 就取 `payload['questions']` 交给 `answer_fn`；
+  返回 None 表示放弃并原样返回当前状态，返回字典则用
+  `graph.invoke(Command(resume=answers), config)` 继续。轮数由图自身的
+  `MAX_CLARIFICATION_ROUNDS` 限制，这里不另计。
+  三个 `answer_fn`：`defaults_answerer`（每题取 `default`，**任何一题没有默认值就整体
+  返回 None**，避免留下"答了一半"的运行）、`terminal_answerer`（逐题打印问题、原因与
+  `[回车 = 默认：…]`；空输入且有默认值时采用并打印"已采用默认"；空输入且无默认值时
+  重新提示，最多三次）、`no_input_answerer`（直接返回 None）。
+  `main()` 的选择顺序：`--accept-defaults` → 否则 `sys.stdin.isatty()` 且未指定
+  `--no-input` 时用终端 → 其余用 no-input。
+- **10.4 暂停标记与 `--answer` 自动定位**：新增 `PAUSED_MARKER = 'paused.json'`、
+  `_read_paused`/`_write_paused`/`_clear_paused`；暂停时写
+  `{'label', 'thread_id', 'questions', 'paused_at'}` 并打印三种恢复方式，运行结束时删除。
+  新增 `latest_paused_run(label, base=None)`：在 `agent-runs/` 下按目录名前缀匹配该标签、
+  且含 `paused.json` 的目录，取修改时间最新的一个。`--answer` 没给 `--out` 时用它；
+  找不到就打印"没有找到等待回答的运行，请用 --out 指定目录"并返回退出码 2。
+  恢复时 `thread_id` 从 `paused.json` 读回——第二个进程没有别的办法知道它。
+- **10.5 结束时的输出**：先 `_print_graph_state`，再完整打印 `state['explanation']`，
+  最后 `dump_state`。单遍路径同样打印 `run.explanation`。
+- **`scripts/run-all-tests.cmd`**：加入 `reactor_agent.test_report` 与
+  `reactor_agent.test_cli` 两组，编号由 `[n/11]` 改为 `[n/13]`；顺带把两行过时的套件
+  说明数字（110 checks / 34 tests）改成实测的 122 / 184。**该文件按要求存成 CRLF**
+  （实测 CRLF=84、bare-LF=0）。
+
+### 新增测试（`reactor_agent/test_cli.py`，18 项，不调用真实模型）
+
+- `DefaultsFinishTheRun`：气化用假客户端 + `defaults_answerer` 一次跑完且 `status ==
+  'READY'`；任一题没有默认值时整体返回 None；每题都用默认文字回答。
+- `NoInputStaysPaused`：`no_input_answerer` 下仍停在暂停状态（`__interrupt__` 存在）。
+- `TerminalAnswersARun`：`mock.patch('builtins.input', side_effect=['', ''])` 两题都采用
+  默认值；手打答案优先于默认值；无默认值时空输入重试三次后放弃；先空后给值时采用给的
+  值；**气化在终端按两次回车跑完**。
+- `PausedRunsCanBeFoundAgain`：临时目录里两个带 `paused.json` 的目录返回较新的那个、
+  不带的目录被忽略、别的标签不会被返回、标记可以往返读写与清除（重复清除不报错）。
+- `ScenarioTable`：`SCENARIOS['toluene']['phase'] != 'liquid'`；每个场景都有 CLI 用到的
+  字段且 label 是 ASCII；三道题原文的关键片段仍在。
+- `RunFolderNames`：危险标签被清洗、不会带路径分隔符。
+
+**测试数量**：`reactor_agent` 337 → **355**（+18），全部通过；`hysys_tools` 184 仍全部通过。
+
+
 
 
 

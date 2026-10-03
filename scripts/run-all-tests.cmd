@@ -9,57 +9,67 @@ echo.
 
 set "FAILED=0"
 
-echo [1/11] tool layer self-check (110 checks)
+echo [1/13] tool layer self-check (122 checks)
 python -m hysys_tools.selfcheck
 if errorlevel 1 set "FAILED=1"
 echo.
 
-echo [2/11] tool layer reliability regression (34 tests)
+echo [2/13] tool layer reliability regression (184 tests)
 python -m unittest discover -s hysys_tools -t .
 if errorlevel 1 set "FAILED=1"
 echo.
 
-echo [3/11] model client: fallback chain, throttling, credentials
+echo [3/13] model client: fallback chain, throttling, credentials
 python -m unittest reactor_agent.test_llm
 if errorlevel 1 set "FAILED=1"
 echo.
 
-echo [4/11] fact extraction and grounding
+echo [4/13] fact extraction and grounding
 python -m unittest reactor_agent.test_extraction
 if errorlevel 1 set "FAILED=1"
 echo.
 
-echo [5/11] deterministic normalisation
+echo [5/13] deterministic normalisation
 python -m unittest reactor_agent.test_normalize
 if errorlevel 1 set "FAILED=1"
 echo.
 
-echo [6/11] reactor selection rules
+echo [6/13] reactor selection rules
 python -m unittest reactor_agent.test_selection
 if errorlevel 1 set "FAILED=1"
 echo.
 
-echo [7/11] specification compiler
+echo [7/13] specification compiler
 python -m unittest reactor_agent.test_compiler
 if errorlevel 1 set "FAILED=1"
 echo.
 
-echo [8/11] execution adapter and ledger
+echo [8/13] execution adapter and ledger
 python -m unittest reactor_agent.test_adapters
 if errorlevel 1 set "FAILED=1"
 echo.
 
-echo [9/11] pipeline: refusals, dry runs, resume
+echo [9/13] pipeline: refusals, dry runs, resume
 python -m unittest reactor_agent.test_pipeline
 if errorlevel 1 set "FAILED=1"
 echo.
 
-echo [10/11] main graph: routing, pausing, checkpointing
+echo [10/13] main graph: routing, pausing, checkpointing
 python -m unittest reactor_agent.test_graph
 if errorlevel 1 set "FAILED=1"
 echo.
 
-echo [11/11] submission packager: exclusions and credential scan
+echo [11/13] report renderer: one document for both callers
+python -m unittest reactor_agent.test_report
+if errorlevel 1 set "FAILED=1"
+echo.
+
+echo [12/13] command line: answering loop and paused runs
+python -m unittest reactor_agent.test_cli
+if errorlevel 1 set "FAILED=1"
+echo.
+
+echo [13/13] submission packager: exclusions and credential scan
 python "%~dp0test_build_submission.py"
 if errorlevel 1 set "FAILED=1"
 echo.
