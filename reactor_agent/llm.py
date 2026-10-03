@@ -33,6 +33,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
 DEFAULT_BASE = 'https://tokenrhythm.studio/v1'
@@ -122,6 +123,9 @@ class LlmConfig:
     # on the prompt plus the caller's own validation.
     response_format: str = RESPONSE_FORMAT_JSON_OBJECT
     max_requests: int = DEFAULT_MAX_REQUESTS
+    # Optional JSONL path for a verbatim record of every request and reply. Used to
+    # verify a real run; the credential is never written into it.
+    transcript: str = ''
     extra_body: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -136,9 +140,14 @@ class LlmConfig:
             max_tokens=int(env.get('TR_MAX_TOKENS', DEFAULT_MAX_TOKENS)),
             timeout=int(env.get('TR_TIMEOUT', DEFAULT_TIMEOUT)),
             min_interval=float(env.get('TR_GAP', DEFAULT_MIN_INTERVAL)),
+            # One attempt on demand: the real-model validation runs are meant to send
+            # exactly one request, and a verification that quietly retries three times
+            # is neither one request nor a clean measurement.
+            attempts=int(env.get('TR_ATTEMPTS', DEFAULT_ATTEMPTS)),
             response_format=(requested if requested in RESPONSE_FORMATS
                              else RESPONSE_FORMAT_JSON_OBJECT),
             max_requests=int(env.get('TR_MAX_REQUESTS', DEFAULT_MAX_REQUESTS)),
+            transcript=str(env.get('TR_TRANSCRIPT', '') or ''),
         )
 
     def require_key(self) -> None:
@@ -223,7 +232,8 @@ class ChatClient:
                  limiter: SlidingWindow | None = None,
                  sleeper: Callable[[float], None] = time.sleep,
                  logger: Callable[[str], None] | None = None,
-                 max_requests: int | None = None) -> None:
+                 max_requests: int | None = None,
+                 transcript: Path | str | None = None) -> None:
         self.config = config or LlmConfig.from_env()
         self._post = transport or _http_post
         self._limiter = limiter or SlidingWindow(
@@ -242,6 +252,26 @@ class ChatClient:
         # then on this client sends no constraint at all, because the constraint is what
         # the endpoint objected to.
         self.response_format_degraded = False
+        # Optional JSONL record of every request and reply, for verifying a real run.
+        # The credential is deliberately NOT included.
+        self.transcript = Path(transcript or self.config.transcript) \
+            if (transcript or self.config.transcript) else None
+
+    def _record(self, payload: dict, status: int | None, body: str) -> None:
+        """Append one exchange to the transcript, if one was asked for.
+
+        Used by the real-model validation: the raw reply has to be archived, because
+        "the model returned the wrong keys" is only checkable against the reply itself.
+        """
+        if self.transcript is None:
+            return
+        try:
+            self.transcript.parent.mkdir(parents=True, exist_ok=True)
+            entry = {'request': payload, 'status': status, 'body': body}
+            with self.transcript.open('a', encoding='utf-8') as handle:
+                handle.write(json.dumps(entry, ensure_ascii=False) + '\n')
+        except OSError:
+            pass
 
     # ------------------------------------------------------------------ public
     def complete(self, system: str, user: str, *, schema: dict | None = None,
@@ -366,11 +396,13 @@ class ChatClient:
             try:
                 status, text = self._post(url, payload, headers, self.config.timeout)
             except LlmError as exc:
+                self._record(payload, None, str(exc))
                 last = exc
                 if attempt < self.config.attempts:
                     self._sleep(min(2 ** attempt, 15))
                     continue
                 raise
+            self._record(payload, status, text)
 
             if status == 200:
                 try:

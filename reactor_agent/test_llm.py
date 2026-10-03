@@ -8,6 +8,8 @@ produce on demand against a live endpoint.
 from __future__ import annotations
 
 import json
+import tempfile
+from pathlib import Path
 import unittest
 
 from reactor_agent.llm import (
@@ -264,6 +266,57 @@ class ResponseFormatChoice(unittest.TestCase):
             c.complete('s', 'u', schema=SCHEMA)
         self.assertFalse(c.response_format_degraded)
         self.assertEqual(ctx.exception.kind, 'request_shape')
+
+
+class TranscriptAndAttempts(unittest.TestCase):
+    """The two knobs the real-model verification depends on."""
+
+    def test_the_attempt_count_can_be_pinned_to_one(self):
+        """A verification run must send exactly one request, not one plus retries."""
+        c, t = client([(503, 'busy')] * 6, attempts=1)
+        with self.assertRaises(LlmError):
+            c.complete('s', 'u')
+        self.assertEqual(len(t.requests), 1)
+
+    def test_one_attempt_is_read_from_the_environment(self):
+        self.assertEqual(LlmConfig.from_env({'TR_ATTEMPTS': '1'}).attempts, 1)
+
+    def test_the_transcript_records_the_reply_and_the_request(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'nested' / 'transcript.jsonl'
+            c, _ = client([(200, reply('{"a": "ok"}'))])
+            c.transcript = path
+            c.complete('s', 'u', schema=SCHEMA)
+            self.assertTrue(path.is_file())
+            entry = json.loads(path.read_text(encoding='utf-8').strip())
+            self.assertEqual(entry['status'], 200)
+            # The body is the endpoint's raw reply, so the model's JSON is escaped
+            # inside it - the transcript records the wire form verbatim.
+            self.assertIn('\\"a\\": \\"ok\\"', entry['body'])
+            self.assertEqual(entry['request']['model'], c.config.model)
+
+    def test_the_transcript_never_contains_the_credential(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'transcript.jsonl'
+            c, _ = client([(200, reply('{"a": "ok"}'))])
+            c.transcript = path
+            c.complete('s', 'u', schema=SCHEMA)
+            written = path.read_text(encoding='utf-8')
+            self.assertNotIn(c.config.key, written)
+            self.assertNotIn('Authorization', written)
+
+    def test_a_failed_exchange_is_recorded_too(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'transcript.jsonl'
+            c, _ = client([(503, 'busy')] * 4, attempts=1)
+            c.transcript = path
+            with self.assertRaises(LlmError):
+                c.complete('s', 'u')
+            entries = [json.loads(line) for line in
+                       path.read_text(encoding='utf-8').splitlines() if line.strip()]
+            self.assertTrue(entries)
+            self.assertEqual(entries[0]['status'], 503)
+            self.assertIn('busy', entries[0]['body'])
 
 
 class ThinkingDisabled(unittest.TestCase):
