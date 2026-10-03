@@ -30,7 +30,9 @@ never rewritten into a model we happen to be able to run.
 """
 from __future__ import annotations
 
-from hysys_tools.core import canonical
+import re
+
+from hysys_tools.core import atoms_of, canonical, equation_text, library_name
 
 from .capabilities import combination_status
 from .schemas import (
@@ -48,6 +50,7 @@ RULE_KINETIC_PHASE_UNCLEAR = 'kinetic_phase_unclear'
 RULE_KINETIC_POLYMER = 'kinetic_polymerisation'
 RULE_CONVERSION = 'conversion_from_constraint'
 RULE_EQUILIBRIUM = 'equilibrium_with_data'
+RULE_EQUILIBRIUM_NETWORK = 'equilibrium_closed_network'
 RULE_GIBBS = 'gibbs_high_temperature_many_species'
 RULE_YIELD_NOT_CONVERSION = 'yield_without_progress'
 RULE_INSUFFICIENT = 'insufficient_information'
@@ -69,6 +72,41 @@ COMPLEXITY_TOKENS = (
     'gasif', 'crack', 'black box', 'complex', 'side reaction', 'mechanism',
     'unknown', 'combustion',
 )
+
+# Prose that says the mechanism is a black box. Unlike COMPLEXITY_TOKENS this list
+# deliberately excludes "副反应" (side reaction): the reforming request names side
+# reactions and is still a closed network of two written equations, so treating that
+# word as a black-box signal would send it to Gibbs and lose the verified
+# Equilibrium path.
+BLACK_BOX_TOKENS = ('气化', '裂解', '黑箱', '燃烧', '机理复杂', '机理未知', '产物未知',
+                    'gasif', 'crack', 'black box', 'combustion',
+                    'unknown mechanism', 'unknown product')
+
+# "可逆" and "reversible" must not match inside "不可逆" / "irreversible", which is
+# what a plain substring test did. Chinese characters are word characters to Python's
+# `re`, so the negative lookbehinds are explicit rather than `\b`.
+_REVERSIBLE = re.compile(r'(?<!不)可逆|(?<!ir)reversible|⇌|⇄|<=>|<->', re.I)
+_IRREVERSIBLE = re.compile(r'不可逆|irreversible', re.I)
+
+# Real equilibrium data, as opposed to the word "gibbs" appearing in a request that
+# merely asks for a Gibbs reactor. `(?<![A-Za-z])` replaces `\b` because Chinese
+# characters count as word characters.
+_EQUILIBRIUM_DATA = re.compile(
+    r'平衡常数|equilibrium\s+constant'
+    r'|(?<![A-Za-z])ln\s*\(?\s*k(?![A-Za-z])'
+    r'|(?<![A-Za-z])k[pca]?\s*[=＝:：]\s*[-+]?\d'
+    r'|[Δδ]\s*G'
+    r'|吉布斯自由能(?:变|数据)|标准生成(?:吉布斯)?自由能'
+    r'|gibbs\s+(?:free\s+)?energy\s+(?:data|change|of\s+reaction)', re.I)
+
+# A request that explicitly asks for the Gibbs reactor, which must beat the
+# closed-network inference: the user named the model they want.
+_ASKS_FOR_GIBBS = re.compile(r'gibbs\s*(?:反应器|reactor|模型)|吉布斯反应器|自由能最小', re.I)
+
+# Candidate products the tool layer's accepted gasification route expects. Order
+# matters: the gasifier is completed to CO2 and then Methane.
+GIBBS_CANDIDATE_ORDER = ('CO', 'CO2', 'Hydrogen', 'Water', 'Methane')
+
 
 
 def _celsius(value: float | None, unit: str | None) -> float | None:
@@ -105,13 +143,140 @@ def product_species(request: ProcessRequest) -> list[str]:
 def is_reversible_declared(request: ProcessRequest) -> bool:
     """True only when the request itself says the reaction is reversible.
 
-    The earlier draft scanned prose for keywords, which is a job for the intake
-    model. Here it reads a field that the intake step had to fill in explicitly.
+    "不可逆" contains "可逆" and "irreversible" contains "reversible", so a substring
+    test called every explicit statement of irreversibility reversible. The regexes
+    look behind the match for the negating prefix instead.
     """
     if any(r.reversible is True for r in request.reactions):
         return True
+    return bool(_REVERSIBLE.search(request.source_text))
+
+
+def planned_thermal_mode(request: ProcessRequest) -> str:
+    """The thermal boundary the plan is going to use, in one place.
+
+    Selection and execution used to disagree about toluene: selection reported
+    `experimental` because no thermal mode was stated, while execution ran the case
+    adiabatically (the tool layer's own default). Deciding it here means the lookup
+    is asked about the mode that will actually be run.
+
+    Only one mode is possible when the cases state it, or when every case gives an
+    outlet temperature (a setpoint only means something isothermally). Otherwise the
+    case is adiabatic, which is what the executor does with no stated boundary.
+    """
+    modes = {c.thermal_mode for c in request.operating_cases if c.thermal_mode}
+    if len(modes) == 1:
+        return modes.pop()
+    if (not modes and request.operating_cases
+            and all(c.outlet_temperature is not None for c in request.operating_cases)):
+        return 'isothermal'
+    return 'adiabatic'
+
+
+def reaction_network_is_closed(request: ProcessRequest) -> bool:
+    """True when the written reactions account for every listed component.
+
+    A closed network is what makes an Equilibrium reactor defensible: the equilibrium
+    constants of a known reaction set determine the outlet, and the tool layer can
+    check every reaction's Q/K. When a listed component lies outside every equation -
+    a by-product the reactions do not produce - the product distribution is genuinely
+    open and free-energy minimisation (Gibbs) is the right model.
+
+    Solids exclude the case: the accepted equilibrium route is gas phase only.
+    """
+    if not request.reactions:
+        return False
+    if request.has_solid_reactant:
+        return False
+
+    for reaction in request.reactions:
+        for name in reaction.stoichiometry:
+            try:
+                library = library_name(name)
+            except Exception:
+                return False
+            if canonical(library) == 'carbon':
+                return False
+
+    in_reactions: set[str] = set()
+    for reaction in request.reactions:
+        in_reactions |= {canonical(n) for n in reaction.stoichiometry}
+
+    feed_species: set[str] = set()
+    for feed in request.feeds:
+        feed_species |= {canonical(n) for n in feed.fractions}
+        feed_species |= {canonical(n) for n in feed.flows}
+
+    for name in request.components:
+        key = canonical(name)
+        if key not in in_reactions and key not in feed_species:
+            return False
+    return True
+
+
+def is_equilibrium_candidate(request: ProcessRequest) -> bool:
+    """True when the request supports the verified Equilibrium path.
+
+    Deliberately does not consult `ReactionSpec.reversible`: that is the intake
+    model's judgement, and this rule is about what the user wrote. It also does not
+    treat "副反应" as a black-box word - the reforming request mentions side reactions
+    and is still a closed network.
+    """
+    if request.has_kinetics() or request.has_conversion_constraints():
+        return False
+    if not reaction_network_is_closed(request):
+        return False
+    if not request.operating_cases:
+        return False
+    if not all(c.outlet_temperature is not None for c in request.operating_cases):
+        return False
     text = request.source_text.casefold()
-    return any(word in text for word in ('可逆', 'reversible'))
+    if any(token in text for token in BLACK_BOX_TOKENS):
+        return False
+    if _IRREVERSIBLE.search(request.source_text):
+        return False
+    if _ASKS_FOR_GIBBS.search(request.source_text):
+        return False
+    return True
+
+
+def complete_gibbs_candidates(components: list[str]) -> tuple[list[str], list[str]]:
+    """Add the candidate products a Gibbs solve needs to be meaningful.
+
+    The accepted gasification route requires a candidate set that covers the
+    elements present: given only Carbon/Water/CO/Hydrogen, a free-energy
+    minimisation has no CO2 or Methane to form, and the accepted run found both.
+
+    A candidate is added only when every element it contains is already present in
+    the component set, so nothing new is introduced. Components whose composition is
+    unknown are skipped rather than raising: they cannot be checked.
+    """
+    present: set[str] = set()
+    elements: set[str] = set()
+    for name in components:
+        try:
+            atoms = atoms_of(name)
+        except Exception:
+            continue
+        present.add(canonical(name))
+        elements |= set(atoms)
+
+    completed = list(components)
+    added: list[str] = []
+    for candidate in GIBBS_CANDIDATE_ORDER:
+        key = canonical(candidate)
+        if key in present:
+            continue
+        try:
+            atoms = atoms_of(candidate)
+        except Exception:
+            continue
+        if not set(atoms) <= elements:
+            continue
+        completed.append(candidate)
+        added.append(candidate)
+        present.add(key)
+    return completed, added
 
 
 def candidate_products(request: ProcessRequest) -> list[str]:
@@ -262,7 +427,7 @@ def select_reactor(request: ProcessRequest,
         figures = ', '.join(
             '%s %.12g%%' % (c.base_component or c.reaction or 'base', c.percent)
             for c in request.conversion_constraints)
-        thermal = _thermal_from_cases(request)
+        thermal = planned_thermal_mode(request)
         status = capability('conversion', thermal)
         return _decision(
             'conversion', RULE_CONVERSION,
@@ -287,7 +452,8 @@ def select_reactor(request: ProcessRequest,
     if any(word in request.source_text for word in ('收率', '选择性', 'yield',
                                                     'selectivity')):
         if not request.has_conversion_constraints():
-            if not (is_gibbs_candidate(request) or _has_equilibrium_data(request)):
+            if not (is_gibbs_candidate(request) or _has_equilibrium_data(request)
+                    or is_equilibrium_candidate(request)):
                 return _decision(
                     'unsupported', RULE_YIELD_NOT_CONVERSION,
                     ['the request mentions yield or selectivity but no conversion',
@@ -299,7 +465,7 @@ def select_reactor(request: ProcessRequest,
 
     # ------------------------------------------------ 4. equilibrium data
     if is_reversible_declared(request) and _has_equilibrium_data(request):
-        status = capability('equilibrium', _thermal_from_cases(request))
+        status = capability('equilibrium', planned_thermal_mode(request))
         return _decision(
             'equilibrium', RULE_EQUILIBRIUM,
             ['the request describes a reversible reaction',
@@ -308,14 +474,42 @@ def select_reactor(request: ProcessRequest,
             status['status'],
             '体系为可逆反应且提供了可追溯的平衡数据，理论上可用 Equilibrium '
             '反应器按化学平衡计算反应终点。',
-            reason=status['reason'] if status['status'] == 'unsupported'
-            else 'the tool layer cannot set the Gibbs Ln(K) source on this '
-                 'workstation, so this path is refused rather than run with a fixed K',
+            reason=None if status['status'] != 'unsupported' else status['reason'],
+            alternatives=['gibbs'])
+
+    # ------------------------------- 4b. closed reaction network -> equilibrium
+    # Placed after the supplied-equilibrium-data branch (an explicit K beats an
+    # inference) and before the Gibbs branch: a network of written equations with a
+    # stated outlet temperature is exactly what the accepted Equilibrium route runs,
+    # and the tool layer checks each reaction's Q/K. Gibbs stays as the alternative.
+    if is_equilibrium_candidate(request):
+        thermal = planned_thermal_mode(request)
+        status = capability('equilibrium', thermal)
+        equations = [equation_text(r.stoichiometry) for r in request.reactions]
+        listed = ', '.join(canonical(n) for n in request.components)
+        exit_temperatures = ', '.join(
+            '%g %s' % (c.outlet_temperature, c.outlet_temperature_unit or 'C')
+            for c in request.operating_cases)
+        return _decision(
+            'equilibrium', RULE_EQUILIBRIUM_NETWORK,
+            ['用户写出了 %d 个反应：%s' % (len(equations), '；'.join(equations)),
+             '列出的组分都在反应式内（%s）' % listed,
+             '无动力学参数、无转化率约束',
+             '每个工况都给出出口温度：%s' % exit_temperatures],
+            'equilibrium' if status['status'] != 'unsupported' else None,
+            status['status'],
+            '用户写出了 %d 个反应（%s），反应网络闭合：列出的组分都能由这些反应式'
+            '解释，没有反应式之外的副产物；也没有动力学参数或转化率约束。'
+            '每个工况都给出出口温度，因此按等温 Equilibrium 反应器计算：'
+            '平衡常数由 HYSYS 组分 Gibbs 数据按出口温度拟合，工具层会用出口 Q/K '
+            '校验每个反应的平衡关系。Gibbs 反应器保留为对照方案。'
+            % (len(equations), '；'.join(equations)),
+            reason=None if status['status'] != 'unsupported' else status['reason'],
             alternatives=['gibbs'])
 
     # ------------------------------------------------ 5. Gibbs candidate
     if is_gibbs_candidate(request):
-        thermal = _thermal_from_cases(request)
+        thermal = planned_thermal_mode(request)
         status = capability('gibbs', thermal)
         candidates = ', '.join(candidate_products(request))
         hottest = hottest_case_c(request)
@@ -353,23 +547,19 @@ def select_reactor(request: ProcessRequest,
 
 
 def _thermal_from_cases(request: ProcessRequest) -> str | None:
-    """Thermal mode implied by the operating cases, if the user stated one."""
-    modes = {c.thermal_mode for c in request.operating_cases if c.thermal_mode}
-    if len(modes) == 1:
-        return modes.pop()
-    if not modes and request.operating_cases:
-        # An outlet temperature is only meaningful as a setpoint if the case is
-        # isothermal; without it the temperature is an outcome.
-        if all(c.outlet_temperature is not None for c in request.operating_cases):
-            return 'isothermal'
-    return None
+    """Deprecated name kept for imports; delegates to `planned_thermal_mode`."""
+    return planned_thermal_mode(request)
 
 
 def _has_equilibrium_data(request: ProcessRequest) -> bool:
-    """True when the request carries data an equilibrium reactor could use."""
-    text = request.source_text.casefold()
-    return any(token in text for token in ('平衡常数', 'ka', 'lnk', 'gibbs',
-                                           '自由能', 'equilibrium constant'))
+    """True when the request carries data an equilibrium reactor could use.
+
+    Reading "gibbs" or a bare "ka" as equilibrium data was wrong twice over: a
+    request that says "请用 Gibbs 反应器" supplies no data at all, and "ka" matches
+    inside unrelated words. Only an actual equilibrium constant, an ln K, or a Gibbs
+    free-energy figure counts.
+    """
+    return bool(_EQUILIBRIUM_DATA.search(request.source_text))
 
 
 def selection_questions(decision: SelectionDecision,

@@ -110,3 +110,122 @@ unsupported），也已核对旧版计划（commit `5688c34`）中同一张表�
   行必须可区分（rule 不同、理由分别提到"重整"与"LIQUID"）。
 
 **测试数量**：`reactor_agent` 247 → **253**（+6），全部通过；`hysys_tools` 184 仍全部通过。
+
+---
+
+## 步骤 3：`reactor_agent/selection.py` 选型规则
+## 步骤 5（5.1–5.8）：`reactor_agent/compiler.py` 编译器
+
+### 为什么这两步合在一个提交里（偏离计划的一处，已按规则 10 判断）
+
+计划的顺序是"步骤 3 改选型 → 提交 → … → 步骤 5 改编译器"。但步骤 3 一落地，重整就从
+Gibbs 变成 Equilibrium，而当时的编译器只给 conversion 输出反应块，于是工具层预检报
+`an equilibrium reactor needs at least one entry in reactions`，
+`test_compiler.py` 的 5 项旧测试立刻失败：
+
+```
+ERROR: test_each_spec_passes_the_precheck
+ERROR: test_feed_temperature_is_not_confused_with_the_outlet
+ERROR: test_gibbs_spec_carries_no_reactions
+ERROR: test_spec_hash_changes_when_the_case_changes
+ERROR: test_two_cases_get_two_specs_with_different_temperatures
+CompileError: compiled spec for case 'smr-710' failed the pre-check:
+an equilibrium reactor needs at least one entry in reactions
+```
+
+执行规则 3 要求"每步跑完 Agent 层全部测试，通过后提交；测试失败就停在那步修"。
+把步骤 3 单独提交就会留下一个红着的仓库，所以把步骤 5 的编译器部分
+（5.1 反应块按类型生成、5.2 ASCII 反应名）与步骤 3 合并为一个提交。
+**这不改变任何对外行为**：最终结果与计划完全一致（重整 = Equilibrium、两个 `vapour`
+反应、名为 `RXN-1`/`RXN-2`），只是提交边界不同。步骤 5 余下的 5.3–5.8 也一并在此落地，
+因为它们同属一个编译路径，分批会让中间状态既带失败测试又没有可运行的 gasification 计划。
+步骤 11 的旧测试更新表仍然照常适用（见下）。
+
+### 步骤 3 的改动
+
+- **3.1 统一热边界**：新增 `planned_thermal_mode(request) -> str`——各工况显式给出的
+  `thermal_mode` 只有一种时用它；否则有工况且每个工况都有出口温度时返回 `isothermal`；
+  其余返回 `adiabatic`。`select_reactor` 里四处 `_thermal_from_cases` 全部改用它。
+  `_thermal_from_cases` 保留为一行包装（计划允许删除或保留），避免影响其他导入方。
+  效果：甲苯（无工况）在选型时就按绝热查表，`capability_status` 由 `experimental`
+  变为 `verified`，与执行时一致。
+- **3.2 可逆判断**：`is_reversible_declared` 改用 `_REVERSIBLE` / `_IRREVERSIBLE`
+  两条正则，带负向后顾，`不可逆`/`irreversible` 不再被判为可逆。
+- **3.3 平衡数据判断**：`_has_equilibrium_data` 只认 `_EQUILIBRIUM_DATA` 正则
+  （平衡常数 / equilibrium constant / ln K / Kp= 数字 / ΔG / 吉布斯自由能 / gibbs free
+  energy），不再把单独的 `gibbs`、`ka` 当证据。"请用 Gibbs 反应器" 现在是 False。
+- **3.4 新规则**：新增 `RULE_EQUILIBRIUM_NETWORK`、`BLACK_BOX_TOKENS`、`_ASKS_FOR_GIBBS`、
+  `reaction_network_is_closed()`、`is_equilibrium_candidate()`。分支插在第 4 步
+  （可逆 + 平衡数据）之后、第 5 步（Gibbs）之前；`alternatives=['gibbs']`；
+  `evidence` 列出每个反应的 `equation_text(...)`、以及"列出的组分都在反应式内""无动力学、
+  无转化率""出口温度给定"三条；`explanation` 写明反应个数与方程、网络闭合的理由、
+  以及 Gibbs 保留为对照方案。
+  - 第 3 步"只有收率"的豁免条件加上 `or is_equilibrium_candidate(request)`。
+  - 第 4 步可执行时 `fallback_reason` 由过时的"工作站无法设置 Ln(K) 源"改为 `None`。
+  - `BLACK_BOX_TOKENS` 刻意不含"副反应"（计划明确要求）：重整原文就写了副反应，
+    它是闭合网络的一部分。计划给的 token 列表里也没有"副反应"，与计划一致。
+- **3.5 新增 `complete_gibbs_candidates(components)`**：按 `CO, CO2, Hydrogen, Water,
+  Methane` 顺序补齐，条件是候选的元素全部已包含在现有组分的元素集合里，且尚未列出；
+  解析不了元素的组分直接跳过。气化的 `[Carbon, Water, CO, Hydrogen]` 补出
+  `['CO2', 'Methane']`；重整的五组分不变。
+
+### 步骤 5 的改动
+
+- **5.1 反应块按反应器类型生成**：`_reaction_entry(request, index, kind)`。
+  conversion → `phase='combined'` + `conversion_percent`/`base_component`；
+  equilibrium → `phase='vapour'`，不带转化率字段；gibbs → `reactions` 为空列表。
+  删掉了原来按 `request.phase` 映射 `liquid/vapour/combined` 的逻辑。`compile_case`
+  里的条件由"只有 conversion 才输出反应"改为"除 gibbs 外都输出"（依据计划 5.1 的表）。
+- **5.2 反应名统一 ASCII**：`'name': 'RXN-%d' % (index + 1)`；转化率约束仍按请求里的
+  原始反应名匹配。
+- **5.3 进料透传 Nm³ 字段**：`_feed_entry` 在 `flow_input == 'normal_volume'` 时追加
+  `flow_input`、`standard_temperature_C`、`standard_pressure_kPa`；`local` 时**不写**
+  `flow_input`，甲苯与重整 spec 与以前逐字相同（有测试固定这一点）。
+- **5.4 饱和碳**：反应器为 gibbs、且进料组分规范名为 `carbon`、份额大于 0 时，
+  `reactor['solid_carbon'] = 'saturation'`。新增私有辅助 `_canonical_fractions(feed)`
+  做规范名归一（只用 `hysys_tools.core.canonical`，不复制常量表）。
+- **5.5 案例名**：新增 `_case_name(plan, case)`：有 `overrides['case_name']` 时原样
+  `safe_case_name`；否则基于 `safe_case_name(scenario_label)`，中文标签清洗为空串时退到
+  `agent-<reactor>`；有出口温度就加 `-%gC`，没有温度但有多个工况就加案例 id。
+  重整两个工况因此得到 `-710C` / `-600C` 两个 ASCII 名。
+- **5.6 追问去重**：`compile_plan` 的合并键由 `(id, field)` 改为 `field`；同一字段已有
+  问题就不再追加（这正是死循环的来源）。`_flow_unit_is_convertible(feed)` 改为接收整个
+  `FeedSpec`，`flow_input == 'normal_volume'` 视为可用，不再提 `q-flow-basis-*`。
+  `q-flow-basis-*` 也带上与 4.1 相同的 `default`（测试会直接调用 `feed_questions`）。
+  煤的问题 `field` 由 `'feeds[0].fractions'` 改为 `'feeds[0].coal_definition'`。
+- **5.7 煤的问题带默认答案**：问题文字与 `default='按纯碳处理'` 按计划写明；新增
+  `coal_assumption(request)`，原文提到煤且已确认按纯碳时返回
+  `Assumption(id='a-coal-pure-carbon', field='feeds[0].fractions', source=...)`，
+  确认来自追问（文本含"按纯碳处理"等）时为 `user_answer`，否则 `user_text`；
+  `accepted=True`，`scope` 说明会影响碳平衡与 CO 收率分母。步骤 6 会调用它。
+- **5.8 spec 假设文字**：`spec['assumptions']` 改为 `'%s：%s' % (a.field,
+  a.scope or a.value)`。
+
+### 按步骤 11 允许表更新的旧测试
+
+| 文件 | 测试 | 旧预期 | 新预期 |
+| --- | --- | --- | --- |
+| `test_compiler.py` | `ReformerCompilation.test_gibbs_spec_carries_no_reactions` | `reactions == []` | 改名 `test_equilibrium_spec_carries_vapour_reactions`，两个反应、名为 `RXN-1`/`RXN-2`、`phase` 都是 `vapour`、`kind == 'equilibrium'`、预检通过 |
+| `test_compiler.py` | 模块文档字符串 | 引用 `acceptance-20261002-144131-d442afae` | 改为引用验收 `20261003-105341-4467d9c9` |
+
+Gibbs 对照没有被删掉：改为新测试 `test_gibbs_comparison_carries_no_reactions`
+（原文加"请用 Gibbs 反应器"后 `reactions == []`、`kind == 'gibbs'`），
+既有验证又有对照。
+
+### 新增测试
+
+- `test_selection.py`：`test_the_accepted_table_is_reproduced_row_by_row`（已在步骤 2 记）、
+  `ClosedNetworkSelectsEquilibrium`（5 项：重整选 Equilibrium、证据列出方程与理由、
+  显式要求 Gibbs 时让位、去掉 WGS 保留 CO2 后不再闭合、气化因固体碳走 Gibbs）、
+  `KeywordMisreadingsAreFixed`（4 项：不可逆、可逆各形式、Gibbs 请求不是平衡数据、
+  真平衡数据）、`ThermalBoundaryIsDecidedOnce`（4 项）、`GibbsCandidateCompletion`（4 项）。
+- `test_compiler.py`：`test_equilibrium_spec_carries_vapour_reactions`、
+  `test_gibbs_comparison_carries_no_reactions`、`test_two_cases_get_two_case_names`、
+  `test_the_reaction_block_matches_the_verified_toluene_spec`、
+  `test_the_confirmed_normal_volume_reaches_the_saturation_route`（含
+  `readback['normal_volume_conversion']['molar_flow_kmol_h']` 约 3569.20，`places=2`）、
+  `test_unconfirmed_gasification_asks_one_question_per_field`（同一字段只有一个问题、
+  煤问题带 `default`）。
+
+**测试数量**：`reactor_agent` 253 → **277**（+24），全部通过；`hysys_tools` 184 仍全部通过。
+

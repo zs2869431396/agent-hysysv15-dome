@@ -14,6 +14,7 @@ from reactor_agent import capabilities as caps
 from reactor_agent.capabilities import combination_status, is_executable
 from reactor_agent.schemas import (
     ConversionConstraint,
+    FeedSpec,
     KineticData,
     OperatingCaseRequest,
     ProcessRequest,
@@ -21,6 +22,7 @@ from reactor_agent.schemas import (
 )
 from reactor_agent.selection import (
     RULE_CONVERSION,
+    RULE_EQUILIBRIUM_NETWORK,
     RULE_GIBBS,
     RULE_INSUFFICIENT,
     RULE_KINETIC_CSTR,
@@ -28,6 +30,12 @@ from reactor_agent.selection import (
     RULE_KINETIC_PHASE_UNCLEAR,
     RULE_KINETIC_POLYMER,
     RULE_YIELD_NOT_CONVERSION,
+    _has_equilibrium_data as selection_has_equilibrium_data,
+    complete_gibbs_candidates,
+    is_equilibrium_candidate,
+    is_reversible_declared,
+    planned_thermal_mode,
+    reaction_network_is_closed,
     select_reactor,
     selection_questions,
 )
@@ -184,6 +192,203 @@ class Questions(unittest.TestCase):
         self.assertTrue(questions)
         self.assertTrue(all(q.blocking for q in questions))
         self.assertTrue(all(q.is_open() for q in questions))
+
+
+# ------------------------------------------------------------- closed networks
+
+REFORMER_COMPONENTS = ['Methane', 'Water', 'CO', 'Hydrogen', 'CO2']
+REFORMER_REACTIONS = [
+    ReactionSpec(name='SMR', reversible=True, stoichiometry={
+        'Methane': -1.0, 'Water': -1.0, 'CO': 1.0, 'Hydrogen': 3.0}),
+    ReactionSpec(name='WGS', reversible=True, stoichiometry={
+        'CO': -1.0, 'Water': -1.0, 'CO2': 1.0, 'Hydrogen': 1.0}),
+]
+
+
+def reformer_request(text_suffix: str = '', reactions=None) -> ProcessRequest:
+    return ProcessRequest(
+        source_text='甲烷蒸汽重整，进料甲烷和水蒸气摩尔比 1:2.7，进料温度520℃，'
+                    '压力13.5bar，出口温度分别为710℃和600℃。'
+                    '主反应甲烷和水反应生成一氧化碳和氢气；'
+                    '副反应一氧化碳和水蒸汽反应生成二氧化碳和氢气' + text_suffix,
+        scenario_label='smr',
+        components=REFORMER_COMPONENTS,
+        reactions=REFORMER_REACTIONS if reactions is None else reactions,
+        operating_cases=[
+            OperatingCaseRequest(case_id='smr-710', outlet_temperature=710.0,
+                                 outlet_temperature_unit='C',
+                                 thermal_mode='isothermal'),
+            OperatingCaseRequest(case_id='smr-600', outlet_temperature=600.0,
+                                 outlet_temperature_unit='C',
+                                 thermal_mode='isothermal')],
+        phase='gas')
+
+
+class ClosedNetworkSelectsEquilibrium(unittest.TestCase):
+    """A reaction network the user wrote out in full is the verified Equilibrium case.
+
+    Before this rule the reformer was sent to Gibbs even though the accepted tool
+    layer runs exactly this system as an Equilibrium reactor and checks every
+    reaction's Q/K. The rule has to be narrow, though: a system with a product
+    outside the written equations is genuinely open and belongs to Gibbs.
+    """
+
+    def test_reforming_selects_equilibrium(self):
+        decision = select_reactor(reformer_request())
+        self.assertEqual(decision.preferred_reactor, 'equilibrium')
+        self.assertEqual(decision.rule_id, 'equilibrium_closed_network')
+        self.assertEqual(decision.capability_status, 'verified')
+        self.assertEqual(decision.execution_reactor, 'equilibrium')
+
+    def test_the_evidence_names_the_equations(self):
+        decision = select_reactor(reformer_request())
+        joined = ' '.join(decision.evidence)
+        self.assertIn('methane', joined)
+        self.assertIn('carbon monoxide', joined)
+        self.assertIn('列出的组分都在反应式内', joined)
+        self.assertIn('出口温度', joined)
+        self.assertIn('Gibbs', decision.explanation)
+
+    def test_asking_for_gibbs_beats_the_inference(self):
+        """The user named the model; the rule must not overrule them."""
+        decision = select_reactor(reformer_request('请用 Gibbs 反应器'))
+        self.assertEqual(decision.preferred_reactor, 'gibbs')
+        self.assertEqual(decision.rule_id, RULE_GIBBS)
+
+    def test_a_product_outside_the_equations_is_not_closed(self):
+        """Drop the water-gas shift but keep CO2: nothing produces it now."""
+        decision = select_reactor(reformer_request(
+            reactions=[REFORMER_REACTIONS[0]]))
+        self.assertEqual(decision.preferred_reactor, 'gibbs')
+        self.assertEqual(decision.rule_id, RULE_GIBBS)
+
+    def test_gasification_is_not_an_equilibrium_network(self):
+        """Solid carbon takes the saturation route, so Equilibrium is out."""
+        request = ProcessRequest(
+            source_text='高温气化，出口 1400 度',
+            scenario_label='gasification',
+            components=['Carbon', 'Water', 'CO', 'Hydrogen'],
+            reactions=[ReactionSpec(stoichiometry={'Carbon': -1.0, 'Water': -1.0,
+                                                   'CO': 1.0, 'Hydrogen': 1.0})],
+            operating_cases=[OperatingCaseRequest(
+                case_id='gasifier', outlet_temperature=1400.0,
+                outlet_temperature_unit='C', thermal_mode='isothermal')],
+            has_solid_reactant=True)
+        decision = select_reactor(request, solid_phase=True)
+        self.assertEqual(decision.preferred_reactor, 'gibbs')
+        self.assertEqual(decision.capability_status, 'verified')
+        self.assertFalse(selection_questions(decision, request))
+
+    def test_an_unclosed_component_keeps_the_network_open(self):
+        request = reformer_request()
+        request = request.model_copy(
+            update={'components': REFORMER_COMPONENTS + ['Nitrogen']})
+        self.assertFalse(reaction_network_is_closed(request))
+        self.assertFalse(is_equilibrium_candidate(request))
+
+    def test_an_inert_component_in_the_feed_keeps_it_closed(self):
+        """A listed component that is fed but never reacts is not an open network."""
+        request = reformer_request()
+        request = request.model_copy(update={
+            'components': REFORMER_COMPONENTS + ['Nitrogen'],
+            'feeds': [FeedSpec(basis='molar_fraction',
+                               fractions={'Nitrogen': 1.0})]})
+        self.assertTrue(reaction_network_is_closed(request))
+
+
+class KeywordMisreadingsAreFixed(unittest.TestCase):
+    """Two keyword tests read the opposite of what the user wrote."""
+
+    def test_irreversible_is_not_reversible(self):
+        for text in ('该反应不可逆', 'the reaction is irreversible'):
+            with self.subTest(text=text):
+                request = ProcessRequest(
+                    source_text=text,
+                    reactions=[ReactionSpec(stoichiometry={'A': -1.0, 'B': 1.0})])
+                self.assertFalse(is_reversible_declared(request))
+
+    def test_reversible_forms_are_recognised(self):
+        for text in ('该反应可逆', 'reversible reaction', 'A ⇌ B'):
+            with self.subTest(text=text):
+                request = ProcessRequest(
+                    source_text=text,
+                    reactions=[ReactionSpec(stoichiometry={'A': -1.0, 'B': 1.0})])
+                self.assertTrue(is_reversible_declared(request))
+
+    def test_asking_for_a_gibbs_reactor_is_not_equilibrium_data(self):
+        for text in ('请用 Gibbs 反应器', 'use a gibbs reactor',
+                     '进料是甲烷和水蒸气（摩尔比 1:2.7），压力 13.5 bar，H2O'):
+            with self.subTest(text=text):
+                request = ProcessRequest(source_text=text, reactions=[
+                    ReactionSpec(stoichiometry={'A': -1.0, 'B': 1.0})])
+                self.assertFalse(selection_has_equilibrium_data(request))
+
+    def test_real_equilibrium_data_is_recognised(self):
+        for text in ('Kp = 2.3', '平衡常数 K = 1.5', 'ΔG = -20 kJ/mol',
+                     'ln K = 3.2', 'equilibrium constant 5.0'):
+            with self.subTest(text=text):
+                request = ProcessRequest(source_text=text, reactions=[
+                    ReactionSpec(stoichiometry={'A': -1.0, 'B': 1.0})])
+                self.assertTrue(selection_has_equilibrium_data(request))
+
+
+class ThermalBoundaryIsDecidedOnce(unittest.TestCase):
+    """Selection and execution must agree about the thermal boundary."""
+
+    def test_a_case_without_a_stated_mode_is_adiabatic(self):
+        request = toluene_request()
+        request = request.model_copy(update={
+            'operating_cases': [OperatingCaseRequest(case_id='tol')]})
+        self.assertEqual(planned_thermal_mode(request), 'adiabatic')
+
+    def test_a_stated_mode_is_used(self):
+        request = toluene_request()
+        request = request.model_copy(update={
+            'operating_cases': [OperatingCaseRequest(case_id='tol',
+                                                     thermal_mode='isothermal')]})
+        self.assertEqual(planned_thermal_mode(request), 'isothermal')
+
+    def test_outlet_temperatures_without_a_mode_mean_isothermal(self):
+        request = reformer_request()
+        request = request.model_copy(update={'operating_cases': [
+            c.model_copy(update={'thermal_mode': None})
+            for c in request.operating_cases]})
+        self.assertEqual(planned_thermal_mode(request), 'isothermal')
+
+    def test_toluene_is_verified_at_selection_time(self):
+        """Plan 3.1: no operating cases means adiabatic, which is verified."""
+        decision = select_reactor(toluene_request())
+        self.assertEqual(decision.capability_status, 'verified')
+
+
+class GibbsCandidateCompletion(unittest.TestCase):
+
+    def test_the_gasifier_gains_co2_and_methane(self):
+        completed, added = complete_gibbs_candidates(
+            ['Carbon', 'Water', 'CO', 'Hydrogen'])
+        self.assertEqual(added, ['CO2', 'Methane'])
+        self.assertEqual(completed, ['Carbon', 'Water', 'CO', 'Hydrogen',
+                                     'CO2', 'Methane'])
+
+    def test_the_reformer_set_is_already_complete(self):
+        completed, added = complete_gibbs_candidates(
+            REFORMER_COMPONENTS)
+        self.assertEqual(added, [])
+        self.assertEqual(completed, REFORMER_COMPONENTS)
+
+    def test_nothing_is_added_without_the_elements(self):
+        """Carbon alone carries no oxygen, so no oxygen-bearing candidate is added."""
+        completed, added = complete_gibbs_candidates(['Carbon'])
+        self.assertEqual(added, [])
+        self.assertEqual(completed, ['Carbon'])
+
+    def test_an_unknown_component_is_skipped_not_raised(self):
+        """A component with no known composition cannot be checked, so it is ignored."""
+        completed, added = complete_gibbs_candidates(
+            ['Carbon', 'Water', 'Unobtainium'])
+        self.assertEqual(completed,
+                         ['Carbon', 'Water', 'Unobtainium'] + added)
+        self.assertTrue(added)
 
 
 class CapabilityLookup(unittest.TestCase):

@@ -1,8 +1,8 @@
 """Compiler tests: ModelingPlan -> hysys-agent/spec/1.
 
 The toluene and reformer cases are compared against the parameters that were
-actually run on the workstation (`hysys_tools/examples.py`, verified by
-`tool-layer-runs/acceptance-20261002-144131-d442afae`). A compiler change that
+actually run on the workstation (`hysys_tools/examples.py`, and the accepted run
+`tool-layer-runs/acceptance-20261003-105341-4467d9c9`). A compiler change that
 silently alters a verified input therefore fails here instead of costing a remote
 run, and every compiled spec is put through the tool layer's own pre-check.
 """
@@ -152,6 +152,15 @@ class TolueneCompilation(unittest.TestCase):
         self.assertNotIn('/', spec['case_name'])
         self.assertNotIn('..', spec['case_name'])
 
+    def test_the_reaction_block_matches_the_verified_toluene_spec(self):
+        """Phase `combined` and an ASCII name, exactly as the accepted spec has it."""
+        spec = compile_plan(toluene_plan()).cases[0].spec
+        self.assertEqual(spec['reactions'][0]['phase'], 'combined')
+        self.assertEqual(spec['reactions'][0]['name'], 'RXN-1')
+        # A local feed must not grow the normal-volume keys: the spec hash recorded
+        # in the execution ledger has to stay the same.
+        self.assertNotIn('flow_input', spec['feeds'][0])
+
 
 class ReformerCompilation(unittest.TestCase):
 
@@ -176,10 +185,51 @@ class ReformerCompilation(unittest.TestCase):
                 report = precheck.validate_spec(case.spec)
                 self.assertTrue(report['ok'], report['errors'])
 
-    def test_gibbs_spec_carries_no_reactions(self):
-        """A Gibbs reactor distributes by free energy; equations would be ignored."""
+    def test_equilibrium_spec_carries_vapour_reactions(self):
+        """The reformer is an Equilibrium case now, and it needs its equations.
+
+        The tool layer's equilibrium path fits ln K for each written reaction and
+        checks the outlet Q/K, so an empty reaction list is not an option; the phase
+        must be `vapour`, which is what the accepted spec uses.
+        """
         for case in compile_plan(smr_plan()).cases:
+            with self.subTest(case=case.case_id):
+                self.assertEqual(case.spec['reactor']['kind'], 'equilibrium')
+                names = [r['name'] for r in case.spec['reactions']]
+                self.assertEqual(names, ['RXN-1', 'RXN-2'])
+                for reaction in case.spec['reactions']:
+                    self.assertEqual(reaction['phase'], 'vapour')
+                    self.assertNotIn('conversion_percent', reaction)
+                report = precheck.validate_spec(case.spec)
+                self.assertTrue(report['ok'], report['errors'])
+
+    def test_gibbs_comparison_carries_no_reactions(self):
+        """Asked for a Gibbs reactor, the request gets one - with a bare candidate set.
+
+        A Gibbs reactor distributes by free energy, so equations would be ignored;
+        this is the control case that shows the Equilibrium branch is a choice about
+        the request, not the only thing the compiler can emit.
+        """
+        plan = smr_plan()
+        request = plan.request.model_copy(update={
+            'source_text': plan.request.source_text + '请用 Gibbs 反应器'})
+        plan.request = request
+        plan.decision = select_reactor(request)
+        compiled = compile_plan(plan)
+        self.assertEqual(compiled.status, 'READY', compiled.blocking_questions())
+        for case in compiled.cases:
+            self.assertEqual(case.spec['reactor']['kind'], 'gibbs')
             self.assertEqual(case.spec['reactions'], [])
+
+    def test_two_cases_get_two_case_names(self):
+        """Two reformer conditions must not share one case name."""
+        names = [c.spec['case_name'] for c in compile_plan(smr_plan()).cases]
+        self.assertEqual(len(set(names)), 2)
+        self.assertTrue(any(n.endswith('-710C') for n in names), names)
+        self.assertTrue(any(n.endswith('-600C') for n in names), names)
+        for name in names:
+            with self.subTest(name=name):
+                self.assertTrue(name.isascii())
 
     def test_spec_hash_changes_when_the_case_changes(self):
         plan = smr_plan()
@@ -251,6 +301,67 @@ class GasificationIsBlockedNotGuessed(unittest.TestCase):
 
 
 class AnsweringTheQuestionsUnblocksTheRun(unittest.TestCase):
+
+    def _confirmed_normal_volume_plan(self) -> ModelingPlan:
+        """Gasification once both questions are answered the documented way.
+
+        The conditions are the ones the accepted spec uses: the total is a standard
+        gas volume at 0 C and 101.325 kPa, and the coal is pure carbon. The intake
+        layer writes `flow_input='normal_volume'` plus the two conditions after the
+        user confirms; nothing here is guessed by the compiler.
+        """
+        request = ProcessRequest(
+            source_text='我要模拟水煤浆的气化过程。进料为煤炭和水，'
+                        '流量80000Nm3/h，压力40bar，水煤浆进料浓度62wt%，'
+                        '进料温度40摄氏度，主要反应：C+H2O → CO+H2，'
+                        '总进料，0°C/101.325 kPa，煤按纯碳处理',
+            scenario_label='gasification',
+            components=['Carbon', 'Water', 'CO', 'Hydrogen', 'CO2', 'Methane'],
+            reactions=[ReactionSpec(stoichiometry={'Carbon': -1.0, 'Water': -1.0,
+                                                   'CO': 1.0, 'Hydrogen': 1.0})],
+            feeds=[FeedSpec(basis='mass_fraction',
+                            fractions={'Carbon': 0.62, 'Water': 0.38},
+                            total_flow=80000.0, total_flow_unit='Nm3/h',
+                            flow_input='normal_volume',
+                            standard_temperature_C=0.0,
+                            standard_pressure_kPa=101.325,
+                            temperature=40.0, pressure=40.0, pressure_unit='bar')],
+            operating_cases=[OperatingCaseRequest(
+                case_id='gasifier', outlet_temperature=1400.0,
+                outlet_temperature_unit='C', thermal_mode='isothermal')])
+        decision = select_reactor(request)
+        return ModelingPlan(request=request, decision=decision,
+                            components=list(request.components),
+                            thermal_mode='isothermal',
+                            cases=[OperatingCase(case_id='gasifier')])
+
+    def test_the_confirmed_normal_volume_reaches_the_saturation_route(self):
+        """Plan 5: the Nm3 path is only usable with the saturated-carbon route."""
+        compiled = compile_plan(self._confirmed_normal_volume_plan())
+        self.assertEqual(compiled.status, 'READY', compiled.blocking_questions())
+        spec = compiled.cases[0].spec
+        self.assertEqual(spec['reactor']['kind'], 'gibbs')
+        self.assertEqual(spec['reactor']['solid_carbon'], 'saturation')
+        self.assertEqual(spec['feeds'][0]['flow_input'], 'normal_volume')
+        self.assertEqual(spec['feeds'][0]['standard_temperature_C'], 0.0)
+        self.assertEqual(spec['feeds'][0]['standard_pressure_kPa'], 101.325)
+        self.assertEqual(spec['reactions'], [])
+        report = precheck.validate_spec(spec)
+        self.assertTrue(report['ok'], report['errors'])
+        # 80000 Nm3/h at 0 C / 101.325 kPa over the ideal-gas molar volume.
+        self.assertAlmostEqual(
+            report['readback']['normal_volume_conversion']['molar_flow_kmol_h'],
+            80000.0 / 22.41397, places=2)
+
+    def test_unconfirmed_gasification_asks_one_question_per_field(self):
+        """The Nm3 loop came from two questions on one field, only one routable."""
+        plan = compile_plan(GasificationIsBlockedNotGuessed()._plan())
+        self.assertEqual(plan.status, 'WAITING_INPUT')
+        fields = [q.field for q in plan.questions]
+        self.assertEqual(fields.count('feeds[0].total_flow_unit'), 1)
+        coal = [q for q in plan.questions if q.id == 'q-coal-definition']
+        self.assertTrue(coal)
+        self.assertEqual(coal[0].default, '按纯碳处理')
 
     def test_answering_lets_the_plan_compile(self):
         """Once the basis is stated as a mass flow, the same request compiles.

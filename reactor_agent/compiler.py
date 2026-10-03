@@ -24,13 +24,20 @@ import re
 from hysys_tools.core import (
     MASS_FLOW_UNITS,
     MOLAR_FLOW_UNITS,
+    NORMAL_VOLUME_UNITS,
     SPEC_SCHEMA,
     library_name,
     property_package_name,
 )
 from hysys_tools import precheck
 
-from .schemas import ModelingPlan, OperatingCase, ProcessRequest, Question
+from .schemas import (
+    Assumption,
+    ModelingPlan,
+    OperatingCase,
+    ProcessRequest,
+    Question,
+)
 
 # Windows refuses these names regardless of extension, and a name carrying a path
 # separator would let a model choose where files land.
@@ -62,8 +69,16 @@ def safe_case_name(raw: str | None, fallback: str = 'agent-case') -> str:
     return text[:60]
 
 
-def _flow_unit_is_convertible(unit: str) -> bool:
-    key = str(unit or '').strip().casefold()
+def _flow_unit_is_convertible(feed) -> bool:
+    """Whether the tool layer can turn this total into a molar flow by itself.
+
+    A normal-volume total is convertible once the standard conditions are on the
+    spec, so it no longer needs the "which stream at what standard state" question
+    that a bare Nm3/h does.
+    """
+    if getattr(feed, 'flow_input', 'local') == 'normal_volume':
+        return True
+    key = str(getattr(feed, 'total_flow_unit', '') or '').strip().casefold()
     return key in MOLAR_FLOW_UNITS or key in MASS_FLOW_UNITS
 
 
@@ -78,17 +93,24 @@ def feed_questions(request: ProcessRequest) -> list[Question]:
     """
     questions: list[Question] = []
     for index, feed in enumerate(request.feeds):
-        if feed.total_flow is not None and not _flow_unit_is_convertible(
-                feed.total_flow_unit):
+        if feed.total_flow is not None and not _flow_unit_is_convertible(feed):
+            normal_volume_unit = (
+                str(feed.total_flow_unit or '').strip().casefold()
+                in NORMAL_VOLUME_UNITS)
             questions.append(Question(
                 id='q-flow-basis-%d' % index,
                 field='feeds[%d].total_flow_unit' % index,
                 blocking=True,
                 question=(
-                    '进料流量 %g %s 指的是哪一股物流、标准状态是什么？'
-                    '（例如 0°C/101.325 kPa 还是 20°C，以及它描述的是进料总量、'
-                    '水蒸气量还是出口合成气量）'
+                    '进料流量 %g %s 按什么理解？默认：单股混合进料的总量，'
+                    '标准状态 0°C / 101.325 kPa。也可以回答其他标准状态'
+                    '（如 20°C），或直接给出质量或摩尔流量。'
+                    % (feed.total_flow, feed.total_flow_unit)
+                    if normal_volume_unit else
+                    '进料流量 %g %s 指的是哪一股物流？请直接给出质量或摩尔流量'
+                    '（例如 kg/h 或 kmol/h）。'
                     % (feed.total_flow, feed.total_flow_unit)),
+                default='总进料，0°C/101.325 kPa' if normal_volume_unit else None,
                 reason=(
                     '体积单位无法换算成摩尔或质量流量：Nm³ 只对气体有意义，而'
                     '煤是固体、水是液体。缺少基准时换算结果取决于假设，不同假设'
@@ -114,6 +136,22 @@ def feed_questions(request: ProcessRequest) -> list[Question]:
     return questions
 
 
+# Words that say the user accepted the pure-carbon representation, either in the
+# original request or in an answer to `q-coal-definition`.
+COAL_CONFIRMATION = ('纯碳', '纯固体碳', '按碳处理', '按纯碳', '按碳算',
+                     'pure carbon', 'as carbon', 'as pure carbon')
+
+
+def _mentions_coal(request: ProcessRequest) -> bool:
+    text = request.source_text.casefold()
+    return any(token in text for token in ('煤', 'coal', '焦', 'char'))
+
+
+def _confirms_pure_carbon(request: ProcessRequest) -> bool:
+    text = request.source_text.casefold()
+    return any(token in text for token in COAL_CONFIRMATION)
+
+
 def coal_questions(request: ProcessRequest) -> list[Question]:
     """Questions about representing a complex solid by a single component.
 
@@ -122,46 +160,77 @@ def coal_questions(request: ProcessRequest) -> list[Question]:
     says ash may be neglected, which is not the same as saying the coal is pure
     carbon.
     """
-    text = request.source_text.casefold()
-    if not any(token in text for token in ('煤', 'coal', '焦', 'char')):
+    if not _mentions_coal(request):
         return []
     # Already answered: if the user said to treat it as pure carbon, asking again
     # would be the repeated-question failure the plan warns about (plan 5.5).
-    if any(token in text for token in (
-            '纯碳', '纯固体碳', '按碳处理', '按纯碳', '按碳算',
-            'pure carbon', 'as carbon', 'as pure carbon')):
+    if _confirms_pure_carbon(request):
         return []
     return [Question(
         id='q-coal-definition',
-        field='feeds[0].fractions',
+        # A field of its own: sharing `feeds[0].fractions` with the missing-
+        # composition question let de-duplication swallow one of the two.
+        field='feeds[0].coal_definition',
         blocking=True,
-        question='煤能否按纯固体碳处理？如果方便，请给出工业分析或元素分析结果。',
+        question='煤能否按纯固体碳处理？默认：按纯碳处理。'
+                 '说明：工具层目前只验收了"碳 + 水"进料，'
+                 '按元素分析建模需要另行扩展。',
+        default='按纯碳处理',
         reason=('题目只说"灰分不做考虑"，未给出煤的组成。按纯碳处理是一个会影响'
                 '碳平衡与 CO 收率分母的假设，需要明确认可后才能执行。'))]
 
 
-def _reaction_entry(request: ProcessRequest, index: int) -> dict:
+def coal_assumption(request: ProcessRequest) -> Assumption | None:
+    """The pure-carbon assumption, once the request actually relies on it."""
+    if not _mentions_coal(request) or not _confirms_pure_carbon(request):
+        return None
+    text = request.source_text.casefold()
+    asked = any(token in text for token in
+                ('按纯碳处理', '按纯碳', '按纯固体碳处理', '按碳处理'))
+    return Assumption(
+        id='a-coal-pure-carbon',
+        field='feeds[0].fractions',
+        value='按纯碳处理',
+        source='user_answer' if asked else 'user_text',
+        accepted=True,
+        scope=('煤按纯固体碳处理；题目只说忽略灰分，这一项是建模假设，'
+               '会影响碳平衡和 CO 收率的分母'))
+
+
+
+def _reaction_entry(request: ProcessRequest, index: int, kind: str) -> dict:
+    """One reaction block, shaped by the reactor that will consume it.
+
+    The phase is not taken from `request.phase` any more. That field describes the
+    feed, and mapping it onto the reaction block produced a liquid-phase reaction in
+    a gas-phase reactor. The accepted specs fix it per reactor type: Conversion runs
+    `combined` (the toluene spec HYSYS accepted), Equilibrium requires `vapour`.
+
+    The name is always ASCII. The intake model names reactions in the user's
+    language ("歧化反应"), and that name becomes a HYSYS reaction object name.
+    Conversion constraints are still matched against the request's own name below.
+    """
     reaction = request.reactions[index]
     entry: dict = {
-        'name': reaction.name or 'RXN-%d' % (index + 1),
+        'name': 'RXN-%d' % (index + 1),
         'stoichiometry': {str(k): float(v)
                           for k, v in reaction.stoichiometry.items()},
     }
     # A conversion figure belongs to a reaction; match it by name when the request
     # names one, otherwise apply it to the single reaction.
-    for constraint in request.conversion_constraints:
-        if constraint.reaction and constraint.reaction != reaction.name:
-            continue
-        if len(request.reactions) > 1 and not constraint.reaction:
-            continue
-        entry['conversion_percent'] = float(constraint.percent)
-        if constraint.base_component:
-            entry['base_component'] = constraint.base_component
-        break
-    entry['phase'] = {
-        'gas': 'vapour', 'liquid': 'liquid', 'mixed': 'combined',
-    }.get(request.phase, 'combined')
+    if kind == 'conversion':
+        for constraint in request.conversion_constraints:
+            if constraint.reaction and constraint.reaction != reaction.name:
+                continue
+            if len(request.reactions) > 1 and not constraint.reaction:
+                continue
+            entry['conversion_percent'] = float(constraint.percent)
+            if constraint.base_component:
+                entry['base_component'] = constraint.base_component
+            break
+    entry['phase'] = 'combined' if kind == 'conversion' else 'vapour'
     return entry
+
 
 
 def _feed_entry(request: ProcessRequest, index: int) -> dict:
@@ -182,7 +251,57 @@ def _feed_entry(request: ProcessRequest, index: int) -> dict:
         entry['total_flow'] = float(feed.total_flow)
         # Carried through unchanged, even when the tool layer will refuse it.
         entry['total_flow_unit'] = feed.total_flow_unit
+    # The accepted normal-volume path needs all three keys, and the tool layer reads
+    # exactly these names. A `local` feed writes none of them, so the toluene and
+    # reformer specs stay byte-identical to what was already run and their spec
+    # hashes in the execution ledger do not change.
+    if feed.flow_input == 'normal_volume':
+        entry['flow_input'] = 'normal_volume'
+        entry['standard_temperature_C'] = float(feed.standard_temperature_C)
+        entry['standard_pressure_kPa'] = float(feed.standard_pressure_kPa)
     return entry
+
+
+def _case_name(plan: ModelingPlan, case: OperatingCase) -> str:
+    """An ASCII case name that distinguishes the operating cases.
+
+    The scenario label is the user's own words and is usually Chinese, which
+    `safe_case_name` strips to nothing; the two reformer conditions would then share
+    one name and the second case would overwrite the first. The outlet temperature
+    is appended for the same reason: it is what actually differs between them.
+    """
+    named = case.overrides.get('case_name')
+    if named:
+        return safe_case_name(named)
+    base = safe_case_name(plan.request.scenario_label, fallback='')
+    if not base:
+        base = 'agent-%s' % (plan.decision.execution_reactor or 'case')
+    outlet = case.overrides.get('outlet_temperature')
+    if outlet is None:
+        source = _case_request(plan, case)
+        if source is not None:
+            outlet = source.outlet_temperature
+    if outlet is not None:
+        return safe_case_name('%s-%gC' % (base, float(outlet)))
+    if len(plan.cases) > 1:
+        return safe_case_name('%s-%s' % (base, case.case_id))
+    return safe_case_name(base)
+
+
+def _canonical_fractions(feed) -> dict[str, float]:
+    """Feed composition keyed the way `hysys_tools.core.canonical` names things.
+
+    The spec keeps the user's own spelling; this view exists only so the compiler
+    can ask "is carbon present, and in what amount" without re-implementing the
+    aliases. Accepts fractions or flows, because either can carry the composition.
+    """
+    from hysys_tools.core import canonical
+
+    composition: dict[str, float] = {}
+    for source in (feed.fractions, feed.flows):
+        for name, value in source.items():
+            composition[canonical(name)] = float(value)
+    return composition
 
 
 def _case_request(plan: ModelingPlan, case: OperatingCase):
@@ -233,22 +352,31 @@ def compile_case(plan: ModelingPlan, case: OperatingCase) -> dict:
             'case %r is isothermal but no outlet temperature was stated for it'
             % case.case_id)
 
+    # Plan 5.4: a Gibbs reactor cannot be handed library Carbon - the tool layer
+    # refuses that before solving - so a carbon-bearing feed takes the accepted
+    # saturated-carbon route instead. This is mandatory, not an improvement.
+    if plan.decision.execution_reactor == 'gibbs':
+        for name, fraction in _canonical_fractions(request.feeds[0]).items():
+            if name == 'carbon' and fraction > 0:
+                reactor['solid_carbon'] = 'saturation'
+                break
+
     spec: dict = {
         'schema': SPEC_SCHEMA,
-        'case_name': safe_case_name(
-            case.overrides.get('case_name') or request.scenario_label
-            or case.case_id or 'agent-case'),
+        'case_name': _case_name(plan, case),
         'scenario': request.scenario_label or case.label or '',
         'fluid_package': {
             'property_package': property_package_name(plan.property_package),
             'components': components,
         },
         'feeds': [_feed_entry(request, i) for i in range(len(request.feeds))],
-        'reactions': [_reaction_entry(request, i)
+        # Plan 5.1: conversion and equilibrium both carry their reaction equations;
+        # only the Gibbs reactor is given a bare candidate set and no equations.
+        'reactions': [_reaction_entry(request, i, plan.decision.execution_reactor)
                       for i in range(len(request.reactions))]
-        if plan.decision.execution_reactor == 'conversion' else [],
+        if plan.decision.execution_reactor != 'gibbs' else [],
         'reactor': reactor,
-        'assumptions': ['%s = %r (%s)' % (a.field, a.value, a.source)
+        'assumptions': ['%s：%s' % (a.field, a.scope or a.value)
                         for a in plan.assumptions],
         'open_questions': [q.question for q in plan.questions if not q.blocking],
     }
@@ -266,11 +394,15 @@ def compile_plan(plan: ModelingPlan) -> ModelingPlan:
     what keeps the agent from spending a HYSYS run on a guess.
     """
     request = plan.request
-    existing = {(q.id, q.field) for q in plan.questions}
+    # De-duplicate by FIELD, not by (id, field). Normalisation and the compiler both
+    # ask about one feed's total flow, under different ids; keeping both questions
+    # left the user answering one of them forever, because only the normaliser's id
+    # is routable. One field, one question.
+    existing = {q.field for q in plan.questions}
     for question in feed_questions(request) + coal_questions(request):
-        if (question.id, question.field) not in existing:
+        if question.field not in existing:
             plan.questions.append(question)
-            existing.add((question.id, question.field))
+            existing.add(question.field)
 
     if plan.blocking_questions():
         plan.status = 'WAITING_INPUT'
