@@ -1050,6 +1050,69 @@ CLI 上确实工作"，只是模型响应是本地 stub：
 **测试数量**：`reactor_agent` 388 → **395**（+7，含 1 项旧测试改名反转），全部通过；
 `hysys_tools` 184 仍全部通过。
 
+---
+
+## 用户批准后的修复 C（第 2 条）：结构化输出模式可配置 + 400 自动降级
+
+**用户决定**：默认 `json_object`；若 400 明确是 `response_format` 不支持，则在**该 client 内
+降级为 `none` 一次并记日志**；`max_requests` 完成后降到 **4**；`Retry-After` 暂缓。
+
+### 改动（`reactor_agent/llm.py`）
+
+1. **`LlmConfig.response_format`**，取值 `json_schema | json_object | none`，
+   `from_env` 读 **`TR_RESPONSE_FORMAT`**，默认 **`json_object`**；非法值回落到默认。
+   同时 `LlmConfig.max_requests` 读 `TR_MAX_REQUESTS`。
+2. **`_payload`**：`json_schema` 才发 `response_format.json_schema`（带 strict schema）；
+   `json_object` 发 `{'type':'json_object'}`（**schema 不上线**，所以提示词必须自带字段名——
+   这正是第 1 条做的事）；`none` 什么都不发。
+3. **回退链语义收口**（这是第一版写错、被 4 个测试打回来的地方）：
+   **"不带约束的那一次"永远只有一步**——`_call_plain` 显式传 `RESPONSE_FORMAT_NONE`，
+   不会继承 `config` 的模式。模式决定**第一次尝试**要什么，不决定回退怎么做。
+   否则 `json_object` 模式下"回退"仍然带着 `response_format`，等于把被拒的请求再发一遍。
+4. **400/422 降级**：仅在 `response_format` 请求上，`400/422` 记为
+   `kind='request_shape'`（不重试），`complete()` 捕获后**一次性**把该 client 的参数降为
+   `none`、打日志（含状态码）、**再问一次无约束的**，并置
+   `response_format_degraded = True` 让**本次运行后续调用都不再带约束**。
+   已经降到 `none` 之后再遇到 400，就按普通失败处理，不会无限降级。
+5. **`DEFAULT_MAX_REQUESTS` 8 → 4**（按用户要求）。四次足够覆盖正常形态：
+   一次成功，或一次约束尝试 + 一次无约束回退，或加一次修复重问。
+
+### 提示词示例换成无关过程（用户要求）
+
+原来示例用的是**甲苯**（就是考题场景之一）。风险很具体：模型可能照抄示例数字，
+而**防幻觉检查就会因为提示词里写了 `10000` 而"在原文中找到"它**——那等于在要打分的
+场景上废掉这一层。
+
+- 示例改为**乙醇脱水**：`乙醇 → 乙烯 + 水`，`species=['乙醇','乙烯','水']`、
+  `conversion_percent=78`、`feed_total=450 kg/h`、`feed_temperature=350 ℃`、
+  `feed_pressure=120 kPa`、`outlet_temperatures=[350]`。
+- 提示词里明确写：**"The example below is a DIFFERENT process ... Copy its SHAPE ...
+  never its values."**
+- 实测：示例数字集合 `{120, 350, 450, 78, 92}` 与**三个场景原文的交集全部为空**；
+  示例物质里只有单字 `水` 与两个场景重合（不可避免，测试按"长度 ≥2 才判重"处理）。
+
+### 新增测试
+
+- `test_llm.py::ResponseFormatChoice`（9 项）：默认与 `TR_RESPONSE_FORMAT` 解析（含大小写、
+  非法值回落）；`json_object` 只发便携约束且**不带 schema**；`json_schema` 才带 schema；
+  `none` 什么都不发；**400 时降级一次并记日志**（断言第 2 次请求不带 `response_format`、
+  只有 2 个请求、日志含 "degrad"）；**降级被记住**（下一次调用也不再尝试）；
+  `none` 模式下的 400 不触发降级、按 `request_shape` 失败。
+- `test_extraction.py::TheExampleCannotLeakIntoAScenario`（4 项）：
+  **示例数字与三个场景输入零交集**；示例物质（≥2 字）不与场景重合；
+  提示词写明示例是"另一个过程、不要照抄数值"；**示例本身仍是合格的契约文档**
+  （`validate_facts(_EXAMPLE) == []`、键集等于 `allowed_keys()`）。
+
+### 顺带按新预算校正的旧测试
+
+`max_requests` 默认 4 之后，三个"持久 503 要如实报状态码"的测试跑不完
+"约束 3 次 + 无约束 3 次"，会先撞上预算而报成 `budget`。它们测的是**错误归因**
+（503 不能被报成 bad_json），与预算无关，所以显式给这些用例 `max_requests=8` 并加注释说明
+"这条需要超过默认预算"。**断言本身没有放宽**，只是给了足够预算让原语义跑完。
+
+**测试数量**：`reactor_agent` 395 → **408**（+13），全部通过；`hysys_tools` 184 仍全部通过。
+
+
 
 
 

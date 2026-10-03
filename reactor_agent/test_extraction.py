@@ -14,7 +14,9 @@ from __future__ import annotations
 import json
 import unittest
 
+from reactor_agent.__main__ import SCENARIOS
 from reactor_agent.extraction import (
+    _EXAMPLE,
     EXTRACTION_SCHEMA,
     REQUIRED_BY_KIND,
     SYSTEM_PROMPT,
@@ -205,6 +207,65 @@ class OneRepairRound(unittest.TestCase):
                       if 'unexpected keys' in payload['messages'][0]['content']]
         self.assertEqual(len(complaints), 1,
                          'the validator complaint may be carried back exactly once')
+
+
+class TheExampleCannotLeakIntoAScenario(unittest.TestCase):
+    """The prompt's JSON example must not be one of the three exam scenarios.
+
+    Two reasons. A model shown the scenario's own numbers can copy them instead of
+    reading the request - and worse, the grounding check would then find "10000" in the
+    text only because the prompt put it there, which would defeat the anti-hallucination
+    layer for exactly the scenarios being graded. So the example is an unrelated
+    process, and its numbers must not appear in any scenario input.
+    """
+
+    SCENARIO_TEXTS = tuple(SCENARIOS[name]['text'] for name in
+                           ('toluene', 'smr', 'gasification'))
+
+    @staticmethod
+    def _numbers(payload) -> set[str]:
+        found: set[str] = set()
+        if isinstance(payload, dict):
+            for value in payload.values():
+                found |= TheExampleCannotLeakIntoAScenario._numbers(value)
+        elif isinstance(payload, (list, tuple)):
+            for value in payload:
+                found |= TheExampleCannotLeakIntoAScenario._numbers(value)
+        elif isinstance(payload, (int, float)) and not isinstance(payload, bool):
+            text = '%g' % payload
+            if text not in ('0', '-1', '1'):
+                found.add(text)
+        return found
+
+    def test_no_example_number_appears_in_a_scenario(self):
+        for number in self._numbers(_EXAMPLE):
+            for text in self.SCENARIO_TEXTS:
+                with self.subTest(number=number):
+                    self.assertNotIn(number, text,
+                                     'the prompt example uses %s, which a scenario also '
+                                     'states' % number)
+
+    def test_the_example_shares_no_substance_with_the_scenarios(self):
+        """A one-character overlap such as 水 is unavoidable; a shared NAME is not."""
+        example_species = set(_EXAMPLE['species']) | {
+            entry['name'] for entry in _EXAMPLE['feed_composition']}
+        for name in sorted(example_species):
+            if len(name) < 2:
+                continue
+            for text in self.SCENARIO_TEXTS:
+                with self.subTest(substance=name):
+                    self.assertNotIn(name.casefold(), text.casefold(),
+                                     'the prompt example mentions %s, which a scenario '
+                                     'also mentions' % name)
+
+    def test_the_prompt_says_the_example_is_another_process(self):
+        self.assertIn('DIFFERENT process', SYSTEM_PROMPT)
+        self.assertIn('never its values', SYSTEM_PROMPT)
+
+    def test_the_example_is_still_a_valid_contract_document(self):
+        """Its shape must be exactly what the validator requires."""
+        self.assertEqual(validate_facts(_EXAMPLE), [])
+        self.assertEqual(sorted(_EXAMPLE), sorted(allowed_keys()))
 
 
 class WrittenEquationsAreTheOnlyEvidence(unittest.TestCase):

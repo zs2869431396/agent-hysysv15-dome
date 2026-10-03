@@ -154,20 +154,23 @@ EXTRACTION_SCHEMA: dict = _obj({
 # Including the word "json" is not cosmetic either: DeepSeek answers
 # `HTTP 400 Prompt must contain the word 'json' in some form to use 'response_format'
 # of type 'json_object'` without it.
+#
+# The example is deliberately NOT one of the three exam scenarios. A model shown
+# toluene's own numbers can copy them instead of reading the request, and the grounding
+# check would then find "10000" in the text only because the prompt put it there. This
+# is an unrelated process - ethanol dehydration - whose values appear in no scenario.
 _EXAMPLE: dict[str, Any] = {
-    'species': ['甲苯', '苯', '邻二甲苯', '间二甲苯', '对二甲苯'],
-    'feed_composition': [{'name': '甲苯', 'fraction': 100}],
+    'species': ['乙醇', '乙烯', '水'],
+    'feed_composition': [{'name': '乙醇', 'fraction': 92}],
     'composition_basis': 'mass_fraction',
     'reactions': [{
-        'name': '歧化',
-        'species': [{'name': '甲苯', 'coefficient': -2},
-                    {'name': '苯', 'coefficient': 1},
-                    {'name': '邻二甲苯', 'coefficient': 1},
-                    {'name': '间二甲苯', 'coefficient': 1},
-                    {'name': '对二甲苯', 'coefficient': 1}],
-        'reversible': False}],
-    'conversion_percent': 50,
-    'conversion_basis': '甲苯',
+        'name': '乙醇脱水',
+        'species': [{'name': '乙醇', 'coefficient': -1},
+                    {'name': '乙烯', 'coefficient': 1},
+                    {'name': '水', 'coefficient': 1}],
+        'reversible': True}],
+    'conversion_percent': 78,
+    'conversion_basis': '乙醇',
     'rate_law': None,
     'pre_exponential': None,
     'activation_energy': None,
@@ -179,17 +182,17 @@ _EXAMPLE: dict[str, Any] = {
     'residence_time_unit': '',
     'catalyst_mass': None,
     'catalyst_mass_unit': '',
-    'phase': 'liquid',
-    'feed_total': 10000,
+    'phase': 'gas',
+    'feed_total': 450,
     'feed_unit': 'kg/h',
-    'feed_temperature': 380,
+    'feed_temperature': 350,
     'feed_temperature_unit': '℃',
-    'feed_pressure': 2.5,
-    'feed_pressure_unit': 'MPa',
+    'feed_pressure': 120,
+    'feed_pressure_unit': 'kPa',
     'case_pressures': [],
     'case_pressure_unit': '',
-    'outlet_temperatures': [],
-    'outlet_temperature_unit': '',
+    'outlet_temperatures': [350],
+    'outlet_temperature_unit': '℃',
     'missing_information': [],
 }
 
@@ -219,7 +222,10 @@ OUTPUT_SPEC = (
     'feed.flow_kg_per_h, no feed.temperature_C), and do not invent keys such as\n'
     '"reactor_type", "conversion", "kinetic", "components" or "flows": every value\n'
     'belongs at the top level, under the names above.\n'
-    'Example of exactly one correct JSON document (values are illustrative):\n'
+    'The example below is a DIFFERENT process from the one you are reading. Copy its\n'
+    'SHAPE (which keys exist, and what type each holds), never its values.\n'
+    'Example of exactly one correct JSON document (values are illustrative and must\n'
+    'not be reused):\n'
     + json.dumps(_EXAMPLE, ensure_ascii=False, indent=2)
 )
 

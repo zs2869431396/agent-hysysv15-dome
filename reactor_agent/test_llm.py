@@ -12,6 +12,9 @@ import unittest
 
 from reactor_agent.llm import (
     RATE_LIMIT_BACKOFF_SECONDS,
+    RESPONSE_FORMAT_JSON_OBJECT,
+    RESPONSE_FORMAT_JSON_SCHEMA,
+    RESPONSE_FORMAT_NONE,
     ChatClient,
     LlmConfig,
     LlmError,
@@ -177,6 +180,92 @@ class RetryPolicy(unittest.TestCase):
         self.assertEqual(len(t.requests), 1)
 
 
+class ResponseFormatChoice(unittest.TestCase):
+    """Which constraint goes on the wire, and what happens when it is refused.
+
+    `json_schema` is OpenAI's Structured Outputs extension and a compatible gateway may
+    answer `HTTP 400 This response_format type is unavailable now` (DeepSeek does). The
+    choice is therefore configuration, the default is the portable `json_object`, and a
+    400 on a constrained request degrades to unconstrained once - never in a loop.
+    """
+
+    def test_the_default_is_json_object(self):
+        self.assertEqual(LlmConfig().response_format, RESPONSE_FORMAT_JSON_OBJECT)
+        self.assertEqual(LlmConfig.from_env({}).response_format,
+                         RESPONSE_FORMAT_JSON_OBJECT)
+
+    def test_the_mode_is_read_from_the_environment(self):
+        for value in ('json_schema', 'Json_Schema', 'json_object', 'none'):
+            with self.subTest(value=value):
+                env = {'TR_RESPONSE_FORMAT': value}
+                self.assertEqual(LlmConfig.from_env(env).response_format,
+                                 value.casefold())
+
+    def test_an_unknown_mode_falls_back_to_the_default(self):
+        self.assertEqual(LlmConfig.from_env({'TR_RESPONSE_FORMAT': 'yaml'}).response_format,
+                         RESPONSE_FORMAT_JSON_OBJECT)
+
+    def test_json_object_sends_the_portable_constraint_and_no_schema(self):
+        c, t = client([(200, reply('{"a": "ok"}'))])
+        self.assertEqual(c.complete('s', 'u', schema=SCHEMA), {'a': 'ok'})
+        self.assertEqual(t.requests[0]['payload']['response_format'],
+                         {'type': 'json_object'})
+
+    def test_json_schema_sends_the_schema_when_asked_for(self):
+        c, t = client([(200, reply('{"a": "ok"}'))],
+                      response_format=RESPONSE_FORMAT_JSON_SCHEMA)
+        c.complete('s', 'u', schema=SCHEMA)
+        sent = t.requests[0]['payload']['response_format']
+        self.assertEqual(sent['type'], 'json_schema')
+        self.assertEqual(sent['json_schema']['schema'], SCHEMA)
+
+    def test_none_sends_no_constraint_at_all(self):
+        c, t = client([(200, reply('{"a": "ok"}'))], response_format='none')
+        self.assertEqual(c.complete('s', 'u', schema=SCHEMA), {'a': 'ok'})
+        self.assertNotIn('response_format', t.requests[0]['payload'])
+
+    def test_a_refused_constraint_degrades_once_and_is_logged(self):
+        logged: list[str] = []
+        config = LlmConfig(base='https://example.test/v1', key='sk-test-' + 'x' * 30,
+                           min_interval=0, response_format=RESPONSE_FORMAT_JSON_SCHEMA)
+        transport = FakeTransport([
+            (400, '{"error":{"message":"This response_format type is unavailable now"}}'),
+            (200, reply('{"a": "unconstrained"}')),
+        ])
+        c = ChatClient(config, transport=transport, sleeper=lambda _s: None,
+                       logger=logged.append)
+        self.assertEqual(c.complete('s', 'u', schema=SCHEMA),
+                         {'a': 'unconstrained'})
+        self.assertTrue(c.response_format_degraded)
+        self.assertEqual(len(transport.requests), 2, 'one refusal, one retry without it')
+        self.assertIn('response_format', transport.requests[0]['payload'])
+        self.assertNotIn('response_format', transport.requests[1]['payload'])
+        self.assertTrue(any('degrad' in line for line in logged), logged)
+
+    def test_the_degradation_is_remembered_for_the_next_call(self):
+        config = LlmConfig(base='https://example.test/v1', key='sk-test-' + 'x' * 30,
+                           min_interval=0, response_format=RESPONSE_FORMAT_JSON_OBJECT)
+        transport = FakeTransport([
+            (400, 'bad format'),
+            (200, reply('{"a": "first"}')),
+            (200, reply('{"a": "second"}')),
+        ])
+        c = ChatClient(config, transport=transport, sleeper=lambda _s: None)
+        c.complete('s', 'u', schema=SCHEMA)
+        c.complete('s', 'u', schema=SCHEMA)
+        self.assertNotIn('response_format', transport.requests[2]['payload'],
+                         'the second call must not try the refused constraint again')
+
+    def test_a_400_that_is_not_about_the_format_is_still_a_failure(self):
+        """Nothing degrades when the mode already sent no constraint."""
+        c, t = client([(400, '{"code":"MODEL_NOT_AVAILABLE"}')] * 4,
+                      response_format=RESPONSE_FORMAT_NONE)
+        with self.assertRaises(LlmError) as ctx:
+            c.complete('s', 'u', schema=SCHEMA)
+        self.assertFalse(c.response_format_degraded)
+        self.assertEqual(ctx.exception.kind, 'request_shape')
+
+
 class ThinkingDisabled(unittest.TestCase):
 
     def test_thinking_is_disabled_by_default(self):
@@ -221,8 +310,9 @@ class RateLimitAndRetry(unittest.TestCase):
         self.assertEqual(len(t.requests), 1, 'one request, then stop')
 
     def test_a_persistent_http_error_surfaces_its_status(self):
-        # The fallback path makes its own attempts, so allow two full rounds.
-        c, _ = client([(503, 'unavailable')] * 6, attempts=3)
+        # The fallback path makes its own attempts, so this needs more than the default
+        # request budget of 4: three schema attempts plus three plain ones.
+        c, _ = client([(503, 'unavailable')] * 8, attempts=3, max_requests=8)
         with self.assertRaises(LlmError) as ctx:
             c.complete('s', 'u', schema=SCHEMA)
         self.assertEqual(ctx.exception.status, 503)
@@ -242,7 +332,7 @@ class RateLimitAndRetry(unittest.TestCase):
         Without this, an outage reads as "the model returned bad JSON" and sends the
         operator looking in the wrong place.
         """
-        c, _ = client([(503, 'down')] * 6, attempts=3)
+        c, _ = client([(503, 'down')] * 8, attempts=3, max_requests=8)
         with self.assertRaises(LlmError) as ctx:
             c.complete('s', 'u', schema=SCHEMA)
         self.assertEqual(ctx.exception.kind, 'http')
@@ -250,7 +340,7 @@ class RateLimitAndRetry(unittest.TestCase):
         self.assertNotEqual(ctx.exception.kind, 'bad_json')
 
     def test_both_paths_are_named_in_the_detail(self):
-        c, _ = client([(503, 'down')] * 6, attempts=3)
+        c, _ = client([(503, 'down')] * 8, attempts=3, max_requests=8)
         with self.assertRaises(LlmError) as ctx:
             c.complete('s', 'u', schema=SCHEMA)
         self.assertIn('also tried', ctx.exception.detail)

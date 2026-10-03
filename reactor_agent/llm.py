@@ -44,11 +44,24 @@ DEFAULT_TIMEOUT = 180
 DEFAULT_MAX_TOKENS = 4000
 DEFAULT_ATTEMPTS = 3
 
-# Requests one client may send, across every retry and every repair round. The largest
-# legitimate need is small: the extraction normally succeeds on the first reply, and a
-# gap retry adds one or two more. Eight leaves room for the awkward cases while making
-# a burst impossible.
-DEFAULT_MAX_REQUESTS = 8
+# Requests one client may send, across every retry and every repair round. Four covers
+# the legitimate shape of a run: one request normally, plus a repair or a gap retry.
+# Anything beyond that is a runaway, and a runaway is what turned a throttled endpoint
+# into one that refused the credential.
+DEFAULT_MAX_REQUESTS = 4
+
+# The `response_format` strategies. `json_schema` is the strict OpenAI extension;
+# `json_object` is the portable subset; `none` sends no constraint at all.
+RESPONSE_FORMAT_JSON_SCHEMA = 'json_schema'
+RESPONSE_FORMAT_JSON_OBJECT = 'json_object'
+RESPONSE_FORMAT_NONE = 'none'
+RESPONSE_FORMATS = (RESPONSE_FORMAT_JSON_SCHEMA, RESPONSE_FORMAT_JSON_OBJECT,
+                    RESPONSE_FORMAT_NONE)
+
+# Statuses that mean "your request shape is wrong", as opposed to "the endpoint is
+# busy". A 400 during a schema-constrained attempt is what an endpoint that does not
+# implement `response_format` answers, and retrying it unchanged is pointless.
+_REQUEST_SHAPE_STATUSES = (400, 422)
 
 # Statuses worth another attempt. 429 is here because the endpoint does recover, but
 # it is handled with a much longer wait than the transient 5xx family: retrying a rate
@@ -102,11 +115,20 @@ class LlmConfig:
     attempts: int = DEFAULT_ATTEMPTS
     # Thinking is off by default for the reason in the module docstring.
     enable_thinking: bool = False
+    # How the reply's shape is constrained. `json_schema` is OpenAI's Structured
+    # Outputs extension: a compatible gateway may accept it and ignore it, or answer
+    # `HTTP 400`. `json_object` is the widely supported subset (some vendors require
+    # the word "json" to appear in the prompt). `none` sends no constraint and relies
+    # on the prompt plus the caller's own validation.
+    response_format: str = RESPONSE_FORMAT_JSON_OBJECT
+    max_requests: int = DEFAULT_MAX_REQUESTS
     extra_body: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> LlmConfig:
         env = os.environ if env is None else env
+        requested = str(env.get('TR_RESPONSE_FORMAT', RESPONSE_FORMAT_JSON_OBJECT))
+        requested = requested.strip().casefold() or RESPONSE_FORMAT_JSON_OBJECT
         return cls(
             base=env.get('TR_BASE', DEFAULT_BASE),
             key=env.get('TR_KEY', ''),
@@ -114,6 +136,9 @@ class LlmConfig:
             max_tokens=int(env.get('TR_MAX_TOKENS', DEFAULT_MAX_TOKENS)),
             timeout=int(env.get('TR_TIMEOUT', DEFAULT_TIMEOUT)),
             min_interval=float(env.get('TR_GAP', DEFAULT_MIN_INTERVAL)),
+            response_format=(requested if requested in RESPONSE_FORMATS
+                             else RESPONSE_FORMAT_JSON_OBJECT),
+            max_requests=int(env.get('TR_MAX_REQUESTS', DEFAULT_MAX_REQUESTS)),
         )
 
     def require_key(self) -> None:
@@ -198,7 +223,7 @@ class ChatClient:
                  limiter: SlidingWindow | None = None,
                  sleeper: Callable[[float], None] = time.sleep,
                  logger: Callable[[str], None] | None = None,
-                 max_requests: int = DEFAULT_MAX_REQUESTS) -> None:
+                 max_requests: int | None = None) -> None:
         self.config = config or LlmConfig.from_env()
         self._post = transport or _http_post
         self._limiter = limiter or SlidingWindow(
@@ -210,8 +235,13 @@ class ChatClient:
         # single intake could emit far more requests than it needed - the observed
         # worst case was 18 - which is exactly the behaviour that turned a throttled
         # endpoint into a refused one.
-        self.max_requests = max(1, int(max_requests))
+        budget = self.config.max_requests if max_requests is None else max_requests
+        self.max_requests = max(1, int(budget))
         self.budget_exhausted = False
+        # Set once the endpoint has answered 400/422 to a response_format request: from
+        # then on this client sends no constraint at all, because the constraint is what
+        # the endpoint objected to.
+        self.response_format_degraded = False
 
     # ------------------------------------------------------------------ public
     def complete(self, system: str, user: str, *, schema: dict | None = None,
@@ -230,11 +260,13 @@ class ChatClient:
         """
         self.config.require_key()
         failures: list[LlmError] = []
+        mode = RESPONSE_FORMAT_NONE if self.response_format_degraded \
+            else self.config.response_format
 
-        if schema is not None:
+        if schema is not None and mode != RESPONSE_FORMAT_NONE:
             try:
                 return self._call_with_schema(system, user, schema, schema_name,
-                                              max_tokens, temperature)
+                                              max_tokens, temperature, mode)
             except LlmError as exc:
                 if exc.kind in TERMINAL_ERROR_KINDS:
                     # A spent credential or an exhausted budget: the plain-text request
@@ -242,9 +274,26 @@ class ChatClient:
                     # falling back only adds a request to an endpoint that has already
                     # said no.
                     raise
-                failures.append(exc)
-                self._log('schema call failed (%s), falling back to plain text' % exc.kind)
+                if exc.kind == 'request_shape' and not self.response_format_degraded:
+                    # The endpoint does not accept this response_format. Drop it for the
+                    # rest of this client's life, log it, and ask once more with no
+                    # constraint at all - the prompt carries the field names, so the
+                    # contract still travels.
+                    self.response_format_degraded = True
+                    mode = RESPONSE_FORMAT_NONE
+                    self._log('response_format=%s rejected (HTTP %s); degrading to none '
+                              'for the rest of this run'
+                              % (self.config.response_format, exc.status))
+                else:
+                    failures.append(exc)
+                    self._log('schema call failed (%s), falling back to plain text'
+                              % exc.kind)
 
+        # The unconstrained request is the LAST step of the chain, never a constrained
+        # one: it exists precisely to drop the constraint, and retrying it with a
+        # response_format would just repeat the request the endpoint rejected. That is
+        # why it is `_call_plain` regardless of the configured mode - the mode decides
+        # what the FIRST attempt asks for, not what the fallback does.
         try:
             text = self._call_plain(system, user, max_tokens, temperature)
             return json.loads(strip_code_fence(text))
@@ -261,7 +310,7 @@ class ChatClient:
     # --------------------------------------------------------------- internals
     def _payload(self, system: str, user: str, max_tokens: int | None,
                  temperature: float | None, schema: dict | None,
-                 schema_name: str) -> dict[str, Any]:
+                 schema_name: str, response_format: str | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {
             'model': self.config.model,
             'max_tokens': max_tokens or self.config.max_tokens,
@@ -273,10 +322,18 @@ class ChatClient:
             payload['enable_thinking'] = False
         if temperature is not None:
             payload['temperature'] = temperature
-        if schema is not None:
+        # `RESPONSE_FORMAT_NONE` means "send nothing", not "use the configured mode":
+        # the unconstrained fallback passes it explicitly so that it cannot inherit a
+        # constraint it exists to drop.
+        mode = self.config.response_format if response_format is None else response_format
+        if schema is not None and mode == RESPONSE_FORMAT_JSON_SCHEMA:
             payload['response_format'] = {
                 'type': 'json_schema',
                 'json_schema': {'name': schema_name, 'strict': True, 'schema': schema}}
+        elif mode == RESPONSE_FORMAT_JSON_OBJECT:
+            # Portable subset. The schema is not transmitted, so the prompt has to
+            # carry the field names - which it does.
+            payload['response_format'] = {'type': 'json_object'}
         payload.update(self.config.extra_body)
         return payload
 
@@ -325,6 +382,14 @@ class ChatClient:
                 last = LlmError('HTTP %d from the model endpoint' % status,
                                 kind='http', status=status, attempts=attempt,
                                 detail=text[:200])
+            elif status in _REQUEST_SHAPE_STATUSES:
+                # 400/422 while a response_format was sent: the endpoint is rejecting
+                # the request's shape. Retrying unchanged cannot help, so it is marked
+                # for the one-time degradation in `complete` instead of being retried.
+                raise LlmError('HTTP %d from the model endpoint: %s'
+                               % (status, text[:200]),
+                               kind='request_shape', status=status, attempts=attempt,
+                               detail=text[:200])
             else:
                 # 401 is reported as `auth`, not `http`, so the fallback chain treats it
                 # as terminal: a rejected credential cannot be fixed by asking again in
@@ -370,9 +435,10 @@ class ChatClient:
 
     def _call_with_schema(self, system: str, user: str, schema: dict,
                           schema_name: str, max_tokens: int | None,
-                          temperature: float | None) -> dict[str, Any]:
+                          temperature: float | None,
+                          response_format: str | None = None) -> dict[str, Any]:
         body = self._send(self._payload(system, user, max_tokens, temperature,
-                                        schema, schema_name))
+                                        schema, schema_name, response_format))
         text, meta = self._content_of(body)
         if not text.strip():
             raise self._empty_reason(meta)
@@ -384,8 +450,10 @@ class ChatClient:
 
     def _call_plain(self, system: str, user: str, max_tokens: int | None,
                     temperature: float | None) -> str:
+        # Explicitly unconstrained, whatever `config.response_format` says: this is the
+        # fallback that exists to drop the constraint.
         body = self._send(self._payload(system, user, max_tokens, temperature,
-                                        None, 'plain'))
+                                        None, 'plain', RESPONSE_FORMAT_NONE))
         text, meta = self._content_of(body)
         if not text.strip():
             raise self._empty_reason(meta)
