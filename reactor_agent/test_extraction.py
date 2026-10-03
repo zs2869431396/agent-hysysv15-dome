@@ -172,6 +172,66 @@ class ContractDriftIsCaught(unittest.TestCase):
         """Completeness belongs to `gaps(kind)`; otherwise every small reply fails."""
         self.assertEqual(validate_facts({'species': []}), [])
 
+    def test_an_unstated_text_field_may_be_null(self):
+        """Not laxity: a reformer has no conversion figure, so null is CORRECT there.
+
+        Measured on 2026-10-03: the reformer reply carried all 29 keys with the right
+        shapes and was refused four times over `conversion_basis should be string`,
+        because the schema only allowed a string. Null in these fields is the answer,
+        not a defect.
+        """
+        reply = {
+            'conversion_basis': None,      # no conversion figure in a reformer request
+            'feed_unit': None,             # the flow was delegated, so no unit yet
+            'feed_pressure_unit': None,    # the pressure was given per operating case
+            'case_pressure_unit': None,
+            'composition_basis': None,
+            'phase': None,
+            'rate_law': None,
+            'activation_energy_unit': None,
+        }
+        self.assertEqual(validate_facts(reply), [])
+
+    def test_a_string_where_an_object_belongs_is_still_wrong(self):
+        self.assertTrue(validate_facts({'reactions': 'two reactions'}))
+        self.assertTrue(validate_facts({'species': '甲苯'}))
+        self.assertTrue(validate_facts({'feed_total': 'lots'}))
+
+    def test_the_reformer_shape_from_a_real_run_is_accepted(self):
+        """The exact shape a real model returned for the reformer, key for key."""
+        reformer = {
+            'species': ['甲烷', '水蒸气', '一氧化碳', '氢气', '二氧化碳'],
+            'feed_composition': [{'name': '甲烷', 'fraction': 1},
+                                 {'name': '水蒸气', 'fraction': 2.7}],
+            'composition_basis': 'mole_ratio',
+            'reactions': [
+                {'name': '主反应', 'species': [
+                    {'name': '甲烷', 'coefficient': -1},
+                    {'name': '水蒸气', 'coefficient': -1},
+                    {'name': '一氧化碳', 'coefficient': 1},
+                    {'name': '氢气', 'coefficient': 3}], 'reversible': True},
+                {'name': '副反应', 'species': [
+                    {'name': '一氧化碳', 'coefficient': -1},
+                    {'name': '水蒸气', 'coefficient': -1},
+                    {'name': '二氧化碳', 'coefficient': 1},
+                    {'name': '氢气', 'coefficient': 1}], 'reversible': True}],
+            'conversion_percent': None, 'conversion_basis': None,
+            'rate_law': None, 'pre_exponential': None, 'activation_energy': None,
+            'activation_energy_unit': None, 'reaction_order': [],
+            'reactor_volume': None, 'reactor_volume_unit': None,
+            'residence_time': None, 'residence_time_unit': None,
+            'catalyst_mass': None, 'catalyst_mass_unit': None,
+            'phase': None,
+            'feed_total': None, 'feed_unit': None,
+            'feed_temperature': 520, 'feed_temperature_unit': '℃',
+            'feed_pressure': None, 'feed_pressure_unit': None,
+            'case_pressures': [13.5, 13.5], 'case_pressure_unit': None,
+            'outlet_temperatures': [710, 600], 'outlet_temperature_unit': '℃',
+            'missing_information': ['进料流量由用户自定'],
+        }
+        self.assertEqual(validate_facts(reformer), [])
+        self.assertEqual(sorted(reformer), sorted(allowed_keys()))
+
     def test_a_non_object_reply_is_rejected(self):
         self.assertTrue(validate_facts(['not', 'an', 'object']))
         self.assertTrue(validate_facts('a string'))

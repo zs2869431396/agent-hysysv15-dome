@@ -58,6 +58,18 @@ def _num_or_null() -> dict:
     return {'type': ['number', 'null']}
 
 
+def _str_or_null() -> dict:
+    """A free-text field, which a request may legitimately not state at all.
+
+    This is not laxity. A reformer has no conversion figure, a delegated feed has no
+    unit, and a per-case pressure has no single feed pressure unit - so `null` is the
+    CORRECT value in those fields, and a strict `string` there rejected a perfect reply.
+    Measured: the reformer reply carried all 29 keys with the right shapes and was still
+    refused four times over `conversion_basis should be string`.
+    """
+    return {'type': ['string', 'null']}
+
+
 def _stoich_entry() -> dict:
     """One species with its signed coefficient.
 
@@ -97,13 +109,13 @@ EXTRACTION_SCHEMA: dict = _obj({
         'name': {'type': 'string'},
         'fraction': {'type': ['number', 'null']},
     })},
-    'composition_basis': {'type': 'string'},
+    'composition_basis': _str_or_null(),
     # Reactions are needed by the conversion path; a Gibbs case may leave them empty,
     # because free-energy minimisation needs no equations.
     'reactions': {'type': 'array', 'items': _reaction_entry()},
     'conversion_percent': _num_or_null(),
     # Which reactant the conversion figure is measured against.
-    'conversion_basis': {'type': 'string'},
+    'conversion_basis': _str_or_null(),
     # Rate-based data. Extracted so that a request which DOES state a rate law is
     # never read as "no kinetics" and quietly turned into a Conversion reactor: the
     # selection rules need it, and without these fields the information was dropped
@@ -113,28 +125,28 @@ EXTRACTION_SCHEMA: dict = _obj({
     'rate_law': {'type': ['string', 'null']},
     'pre_exponential': _num_or_null(),
     'activation_energy': _num_or_null(),
-    'activation_energy_unit': {'type': 'string'},
+    'activation_energy_unit': _str_or_null(),
     'reaction_order': {'type': 'array', 'items': _obj({
         'name': {'type': 'string'}, 'order': {'type': 'number'}})},
     'reactor_volume': _num_or_null(),
-    'reactor_volume_unit': {'type': 'string'},
+    'reactor_volume_unit': _str_or_null(),
     'residence_time': _num_or_null(),
-    'residence_time_unit': {'type': 'string'},
+    'residence_time_unit': _str_or_null(),
     'catalyst_mass': _num_or_null(),
-    'catalyst_mass_unit': {'type': 'string'},
+    'catalyst_mass_unit': _str_or_null(),
     # Reactant phase, when the request makes it clear. It decides whether a stated
     # rate law means CSTR or PFR, so guessing it would pick the wrong reactor.
-    'phase': {'type': 'string'},
+    'phase': _str_or_null(),
     'feed_total': _num_or_null(),
-    'feed_unit': {'type': 'string'},
+    'feed_unit': _str_or_null(),
     'feed_temperature': _num_or_null(),
-    'feed_temperature_unit': {'type': 'string'},
+    'feed_temperature_unit': _str_or_null(),
     'feed_pressure': _num_or_null(),
-    'feed_pressure_unit': {'type': 'string'},
+    'feed_pressure_unit': _str_or_null(),
     'case_pressures': {'type': 'array', 'items': {'type': 'number'}},
-    'case_pressure_unit': {'type': 'string'},
+    'case_pressure_unit': _str_or_null(),
     'outlet_temperatures': {'type': 'array', 'items': {'type': 'number'}},
-    'outlet_temperature_unit': {'type': 'string'},
+    'outlet_temperature_unit': _str_or_null(),
     'missing_information': {'type': 'array', 'items': {'type': 'string'}},
 })
 
@@ -174,14 +186,14 @@ _EXAMPLE: dict[str, Any] = {
     'rate_law': None,
     'pre_exponential': None,
     'activation_energy': None,
-    'activation_energy_unit': '',
+    'activation_energy_unit': None,
     'reaction_order': [],
     'reactor_volume': None,
-    'reactor_volume_unit': '',
+    'reactor_volume_unit': None,
     'residence_time': None,
-    'residence_time_unit': '',
+    'residence_time_unit': None,
     'catalyst_mass': None,
-    'catalyst_mass_unit': '',
+    'catalyst_mass_unit': None,
     'phase': 'gas',
     'feed_total': 450,
     'feed_unit': 'kg/h',
@@ -190,7 +202,7 @@ _EXAMPLE: dict[str, Any] = {
     'feed_pressure': 120,
     'feed_pressure_unit': 'kPa',
     'case_pressures': [],
-    'case_pressure_unit': '',
+    'case_pressure_unit': None,
     'outlet_temperatures': [350],
     'outlet_temperature_unit': '℃',
     'missing_information': [],
