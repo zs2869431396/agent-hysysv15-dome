@@ -8,7 +8,9 @@ means the rules are wrong rather than that a model behaved oddly.
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
+from reactor_agent import capabilities as caps
 from reactor_agent.capabilities import combination_status, is_executable
 from reactor_agent.schemas import (
     ConversionConstraint,
@@ -195,7 +197,8 @@ class CapabilityLookup(unittest.TestCase):
     def test_unsupported_combinations_are_not_silently_allowed(self):
         for kind, thermal, count, solid in (
                 ('gibbs', 'adiabatic', 1, False),
-                ('equilibrium', 'isothermal', 1, False),
+                ('equilibrium', 'adiabatic', 1, False),
+                ('equilibrium', 'isothermal', 1, True),
                 ('conversion', 'adiabatic', 2, False),
                 ('cstr', 'isothermal', 1, False),
                 ('pfr', 'isothermal', 1, False)):
@@ -206,10 +209,12 @@ class CapabilityLookup(unittest.TestCase):
                 self.assertFalse(is_executable(kind, thermal, reaction_count=count,
                                                solid_phase=solid))
 
-    def test_solid_carbon_gibbs_is_experimental_not_verified(self):
+    def test_solid_carbon_gibbs_is_verified_via_saturation(self):
         status = combination_status('gibbs', 'isothermal', reaction_count=1,
                                     solid_phase=True)
-        self.assertEqual(status['status'], 'experimental')
+        self.assertEqual(status['status'], 'verified')
+        self.assertEqual(status['rule'], 'gibbs_isothermal_solid_saturation')
+        self.assertTrue(status['evidence'])
 
     def test_every_status_cites_evidence_or_explains_absence(self):
         for kind, thermal in (('conversion', 'adiabatic'), ('gibbs', 'isothermal'),
@@ -221,6 +226,108 @@ class CapabilityLookup(unittest.TestCase):
                 if status['status'] == 'verified':
                     self.assertTrue(status['evidence'],
                                     'a verified combination must cite a real run')
+
+    # ------------------------------------------- the accepted combination table
+    def test_the_accepted_table_is_reproduced_row_by_row(self):
+        """Plan 2.3: one row per combination, no row implied by another."""
+        for kind, thermal, phase, count, solid, expected, rule in (
+                ('cstr', None, None, 1, False, 'unsupported', 'no_implementation'),
+                ('pfr', None, None, 1, False, 'unsupported', 'no_implementation'),
+                ('conversion', 'adiabatic', None, 2, False, 'unsupported',
+                 'multiple_conversion_reactions'),
+                ('conversion', 'adiabatic', None, 1, False, 'verified',
+                 'conversion_adiabatic_single'),
+                ('conversion', 'isothermal', None, 1, False, 'experimental',
+                 'conversion_isothermal_single'),
+                ('conversion', None, None, 1, False, 'experimental',
+                 'conversion_unspecified_thermal'),
+                ('equilibrium', 'isothermal', None, 1, True, 'unsupported',
+                 'equilibrium_solid'),
+                ('equilibrium', 'isothermal', 'liquid', 1, False, 'unsupported',
+                 'equilibrium_liquid'),
+                ('equilibrium', None, None, 1, False, 'unsupported',
+                 'equilibrium_needs_isothermal'),
+                ('equilibrium', 'adiabatic', None, 1, False, 'unsupported',
+                 'equilibrium_needs_isothermal'),
+                ('equilibrium', 'isothermal', 'gas', 1, False, 'verified',
+                 'equilibrium_isothermal_vapour'),
+                ('gibbs', 'adiabatic', None, 1, False, 'unsupported',
+                 'gibbs_adiabatic_unimplemented'),
+                ('gibbs', None, None, 1, False, 'experimental',
+                 'gibbs_unspecified_thermal'),
+                ('gibbs', 'isothermal', None, 1, True, 'verified',
+                 'gibbs_isothermal_solid_saturation'),
+                ('gibbs', 'isothermal', None, 1, False, 'verified',
+                 'gibbs_isothermal_gas')):
+            with self.subTest(kind=kind, thermal=thermal, phase=phase,
+                              count=count, solid=solid):
+                status = combination_status(kind, thermal, phase=phase,
+                                            reaction_count=count, solid_phase=solid)
+                self.assertEqual(status['status'], expected)
+                self.assertEqual(status['rule'], rule)
+
+    def test_is_executable_agrees_with_the_status(self):
+        """Plan 2.5: the boolean is a view of the table, not a second table."""
+        for kind, thermal, phase, count, solid in (
+                ('conversion', 'adiabatic', None, 1, False),
+                ('equilibrium', 'isothermal', 'gas', 1, False),
+                ('equilibrium', 'adiabatic', None, 1, False),
+                ('gibbs', 'isothermal', None, 1, True),
+                ('gibbs', 'adiabatic', None, 1, False),
+                ('cstr', 'isothermal', None, 1, False)):
+            with self.subTest(kind=kind, thermal=thermal):
+                expected = combination_status(
+                    kind, thermal, phase=phase, reaction_count=count,
+                    solid_phase=solid)['status'] != 'unsupported'
+                self.assertEqual(
+                    is_executable(kind, thermal, phase=phase,
+                                  reaction_count=count, solid_phase=solid), expected)
+
+    def test_a_changed_tool_layer_downgrades_verified(self):
+        """Plan 11: verified rests on bytes, so changing one byte revokes it."""
+        caps.acceptance_state.cache_clear()
+        try:
+            with mock.patch.object(caps, '_file_sha256', return_value='0' * 64):
+                caps.acceptance_state.cache_clear()
+                status = caps.combination_status('equilibrium', 'isothermal')
+        finally:
+            caps.acceptance_state.cache_clear()
+        self.assertEqual(status['status'], 'experimental')
+        self.assertIn('不一致', status['reason'])
+        self.assertEqual(status['evidence'], [])
+
+    def test_acceptance_state_reads_as_holding_for_this_tool_layer(self):
+        state = caps.acceptance_state()
+        self.assertTrue(state['holds'], state['reason'])
+        self.assertEqual(state['tool_revision'], caps.ACCEPTED_TOOL_REVISION)
+        self.assertEqual(state['mismatched'], [])
+
+    def test_no_combination_outside_the_record_is_verified(self):
+        """Plan 11 / review brief 5: catch a row that quietly claims verification."""
+        accepted_rules = {
+            'conversion_adiabatic_single',
+            'equilibrium_isothermal_vapour',
+            'gibbs_isothermal_gas',
+            'gibbs_isothermal_solid_saturation',
+        }
+        for kind in ('conversion', 'equilibrium', 'gibbs', 'cstr', 'pfr'):
+            for thermal in ('adiabatic', 'isothermal', None):
+                for solid in (False, True):
+                    with self.subTest(kind=kind, thermal=thermal, solid=solid):
+                        status = combination_status(kind, thermal, phase='gas',
+                                                    solid_phase=solid)
+                        self.assertIn(status['status'],
+                                      ('verified', 'experimental', 'unsupported'))
+                        if status['status'] == 'verified':
+                            self.assertIn(status['rule'], accepted_rules)
+
+    def test_equilibrium_acceptance_cites_reforming_not_the_gasifier(self):
+        """The two verified Gibbs-family rows must stay distinguishable."""
+        vapour = combination_status('equilibrium', 'isothermal')
+        solid = combination_status('gibbs', 'isothermal', solid_phase=True)
+        self.assertNotEqual(vapour['rule'], solid['rule'])
+        self.assertIn('重整', vapour['reason'])
+        self.assertIn('LIQUID', solid['reason'])
 
 
 if __name__ == '__main__':

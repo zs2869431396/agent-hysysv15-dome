@@ -248,20 +248,21 @@ class KineticsAreNotLost(unittest.TestCase):
 class SolidPhaseIsCarried(unittest.TestCase):
     """Gasification names coal, which `normalize` represents as solid carbon.
 
-    The capability table treats a solid-phase Gibbs case as experimental, but the
-    flag has to reach it. The scenario's nominal phase is "gas", which on its own made
-    gasification look verified - contradicting the project's own stated boundary.
+    Solid carbon no longer makes the combination experimental: the accepted
+    saturated-carbon route covers it, so the capability is now verified. The flag
+    still has to reach the lookup, because that is what selects the saturation
+    route rather than a plain Gibbs case.
     """
 
     def test_a_solid_reactant_is_detected(self):
         request, _ = normalize(GASIFICATION_FACTS, 'text', scenario_label='g')
         self.assertTrue(request.has_solid_reactant)
 
-    def test_the_capability_becomes_experimental(self):
+    def test_the_capability_is_the_saturation_route(self):
         from reactor_agent.selection import select_reactor
         request, _ = normalize(GASIFICATION_FACTS, 'text', scenario_label='g')
         decision = select_reactor(request, solid_phase=request.has_solid_reactant)
-        self.assertEqual(decision.capability_status, 'experimental')
+        self.assertEqual(decision.capability_status, 'verified')
 
     def test_it_is_declared_as_an_assumption(self):
         _, report = normalize(GASIFICATION_FACTS, 'text', scenario_label='g')
