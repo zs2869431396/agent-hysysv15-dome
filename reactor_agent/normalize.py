@@ -199,6 +199,31 @@ def expand_ambiguous_species(name: str, present: list[str]) -> tuple[list[str], 
     return [], False
 
 
+def stated_pure_feed(text: str) -> str | None:
+    # A pure constituent stream does not prove the composition of multiple feeds.
+    if re.search(r'另一|第二股|另一路|另股|分别进料|混合进料|mixed\s+feed|second\s+feed', text, re.I):
+        return None
+    """Resolve an explicitly pure feed, without choosing a component from products."""
+    found = set()
+    patterns = (r'(?:进料|原料)(?:为|是)?\s*纯([^，。；;\s]+)',
+                r'纯([^，。；;\s]+?)(?:进料|原料)',
+                r'pure\s+([A-Za-z-]+)\s+feed')
+    for clause in re.split(r'[，。；;\n]', text):
+        if re.search(r'不是纯|并非纯|非纯|不纯|not\s+pure', clause, re.I):
+            continue
+        for pattern in patterns:
+            for match in re.finditer(pattern, clause, re.I):
+                name = resolve_species(match.group(1))
+                if name:
+                    found.add(name)
+    return next(iter(found)) if len(found) == 1 else None
+
+
+def stated_xylene_isomers(text: str) -> bool:
+    return (all(name in text for name in ('邻二甲苯', '间二甲苯', '对二甲苯'))
+            or bool(re.search(r'邻\s*[、,/和及]\s*间\s*[、,/和及]\s*对\s*(?:三种)?二甲苯', text)))
+
+
 def _canonical_unit(raw: Any, table: dict[str, str], default: str) -> tuple[str, bool]:
     """Return (canonical unit, changed?)."""
     text = str(raw or '').strip()
@@ -795,6 +820,12 @@ def normalize(facts: dict[str, Any], source_text: str, *,
     for name in raw_species:
         resolved = resolve_species(name)
         if resolved is None:
+            if _fold_formula(name) in _ISOMER_GROUPS and stated_xylene_isomers(source_text):
+                for member in _ISOMER_GROUPS[_fold_formula(name)]:
+                    if member not in components:
+                        components.append(member)
+                report.record('component group %r expanded to the three isomers stated in the request' % name)
+                continue
             # An unknown spelling is a question, not something to drop silently.
             report.questions.append(Question(
                 id='q-component-%s' % _stable_id(name),
@@ -1018,6 +1049,12 @@ def normalize(facts: dict[str, Any], source_text: str, *,
                    '这不是工业选择性，也不是热力学预测')))
 
     for note in facts.get('missing_information') or []:
+        if re.search(r'反应热|比热|reaction\s+heat|heat\s+capacity', str(note), re.I):
+            report.record('model thermophysical-data gap ignored: HYSYS supplies property data')
+            continue
+        if kinetics is None and re.search(r'催化剂装填|停留时间|反应器体积|catalyst\s+mass|residence\s+time', str(note), re.I):
+            report.record('model equipment-sizing gap ignored for non-kinetic calculation')
+            continue
         report.notes.append('模型指出未提供：%s' % note)
     # A reviewer question and a missing-field check can describe the same gap.
     unique = {}

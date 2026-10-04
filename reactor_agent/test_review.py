@@ -35,6 +35,20 @@ PRESSURE_FACTS['reactions'] = [
         [('一氧化碳', -1), ('水', -1), ('二氧化碳', 1), ('氢气', 1)]]},
 ]
 EMPTY_REVIEW = {'corrections': [], 'questions': []}
+LIVE_REVIEW = json.loads((Path(__file__).parent / 'fixtures' /
+                         'toluene_review_failure.json').read_text(encoding='utf-8'))
+
+
+def live_toluene_facts():
+    facts = copy.deepcopy(TOLUENE_FACTS)
+    facts.update(species=['甲苯', '苯', '邻二甲苯', '间二甲苯', '对二甲苯'],
+        feed_composition=[{'name': '甲苯', 'fraction': 100}], composition_basis='mass_fraction',
+        feed_total=6000, feed_temperature=400, feed_pressure=2, conversion_percent=30,
+        missing_information=['反应热数据，无法计算绝热出口温度',
+            '产物比热容数据，无法进行能量衡算', '催化剂装填量或反应器体积，无法验证停留时间或压降假设'])
+    facts['reactions'][0]['species'] += [
+        {'name': '间二甲苯', 'coefficient': 1}, {'name': '对二甲苯', 'coefficient': 1}]
+    return facts
 
 
 def patch_field(field, value, quote):
@@ -56,6 +70,82 @@ def model_client(facts, review, **config):
 
 
 class ReviewTests(unittest.TestCase):
+    def test_user_live_review_replays_to_ready_without_extra_questions(self):
+        client, calls = model_client(live_toluene_facts(),
+            {'corrections': LIVE_REVIEW['corrections'], 'questions': []})
+        state = build_graph(client).invoke(initial_state(LIVE_REVIEW['text']),
+            {'configurable': {'thread_id': 'live-review'}})
+        self.assertEqual(state['status'], 'READY', state.get('blocking'))
+        self.assertEqual(state['blocking'], [])
+        self.assertEqual(len(calls), 2)
+        spec = state['cases'][0]['spec']
+        self.assertEqual(spec['reactor']['thermal_mode'], 'adiabatic')
+        self.assertIsNone(spec['reactor'].get('outlet_temperature'))
+        self.assertEqual(spec['feeds'][0]['total_flow'], 6000)
+        self.assertEqual(spec['feeds'][0]['fractions'], {'Toluene': 1.0})
+        self.assertEqual(spec['feeds'][0]['pressure'], 2)
+        self.assertEqual(spec['reactor']['pressure_drop_kPa'], 0)
+        self.assertTrue(state['review']['rejected_corrections'])
+        self.assertNotIn('模型指出未提供：反应热', state.get('explanation', ''))
+        stoich = spec['reactions'][0]['stoichiometry']
+        self.assertEqual(stoich['Toluene'], -2)
+        self.assertEqual(stoich['Benzene'], 1)
+        for name in ('o-Xylene', 'm-Xylene', 'p-Xylene'):
+            self.assertAlmostEqual(stoich[name], 1 / 3)
+
+    def test_quoted_inlet_temperature_cannot_become_adiabatic_outlet(self):
+        client, _ = model_client(live_toluene_facts(), {'corrections': [
+            patch_field('outlet_temperatures', [400], '温度400℃')], 'questions': []})
+        state = build_graph(client).invoke(initial_state(LIVE_REVIEW['text']),
+            {'configurable': {'thread_id': 'inlet-not-outlet'}})
+        self.assertEqual(state['status'], 'READY', state.get('blocking'))
+        self.assertEqual(state['facts']['outlet_temperatures'], [])
+        self.assertEqual(state['cases'][0]['spec']['reactor']['thermal_mode'], 'adiabatic')
+
+    def test_reviewer_questions_cannot_override_source_proofs(self):
+        questions = [{'field': field, 'question': '请确认该条件。', 'reason': '模型认为缺失。'}
+                     for field in ('feed_composition', 'composition_basis', 'reactions',
+                                   'outlet_temperatures', 'case_pressures', 'missing_information')]
+        client, _ = model_client(live_toluene_facts(), {'corrections': [], 'questions': questions})
+        state = build_graph(client).invoke(initial_state(LIVE_REVIEW['text']),
+            {'configurable': {'thread_id': 'source-proofs'}})
+        self.assertEqual(state['status'], 'READY', state.get('blocking'))
+
+    def test_wrong_other_coefficient_still_needs_confirmation(self):
+        facts = live_toluene_facts()
+        facts['reactions'][0]['species'][0]['coefficient'] = -3
+        client, _ = model_client(facts, {'corrections': [
+            patch_field('reactions', live_toluene_facts()['reactions'], '模型自己的解释')], 'questions': []})
+        state = build_graph(client).invoke(initial_state(LIVE_REVIEW['text']),
+            {'configurable': {'thread_id': 'wrong-coefficient'}})
+        self.assertEqual(state['status'], 'WAITING_INPUT')
+        self.assertFalse(state['cases'])
+        self.assertTrue(any(q['id'] == 'q-review:reactions' for q in state['blocking']))
+
+    def test_xylene_group_without_stated_isomers_still_blocks(self):
+        facts = dict(live_toluene_facts(), species=['甲苯', '苯', '二甲苯'])
+        text = LIVE_REVIEW['text'].replace('邻、间、对二甲苯，三种二甲苯按等摩尔比例分配', '二甲苯')
+        client, _ = model_client(facts, EMPTY_REVIEW)
+        state = build_graph(client).invoke(initial_state(text),
+            {'configurable': {'thread_id': 'unknown-isomer'}})
+        self.assertEqual(state['status'], 'WAITING_INPUT')
+        self.assertTrue(any(q['field'] == 'fluid_package.components' for q in state['blocking']))
+
+    def test_negated_or_multiple_pure_feeds_do_not_discharge_composition_question(self):
+        from reactor_agent.normalize import stated_pure_feed
+        for text in ('进料不是纯甲苯', '进料为非纯甲苯', '进料为纯甲苯，另一股进料为水'):
+            with self.subTest(text=text):
+                self.assertIsNone(stated_pure_feed(text))
+
+    def test_isothermal_setpoint_is_retained(self):
+        facts = dict(live_toluene_facts(), outlet_temperatures=[450], outlet_temperature_unit='℃')
+        text = LIVE_REVIEW['text'].replace('反应器绝热', '反应器等温，出口温度450℃')
+        client, _ = model_client(facts, EMPTY_REVIEW)
+        state = build_graph(client).invoke(initial_state(text),
+            {'configurable': {'thread_id': 'isothermal-setpoint'}})
+        self.assertEqual(state['status'], 'READY', state.get('blocking'))
+        self.assertEqual(state['cases'][0]['spec']['reactor']['outlet_temperature'], 450)
+
     def test_review_is_enabled_by_default_in_cli_and_ui(self):
         self.assertTrue(LlmConfig().review)
         self.assertTrue(LlmConfig.from_env({}).review)

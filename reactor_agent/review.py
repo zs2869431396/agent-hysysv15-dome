@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import json
 import math
+import re
 
 from .extraction import EXTRACTION_SCHEMA, grounding_failures, validate_facts
 from .llm import LlmError
@@ -35,6 +36,14 @@ outlet_temperatures 必须保留重复温度，case_pressures 按同一顺序填
 进料和出口压力均为某值、无压降，表示该工况的进料压力与出口压力一致，
 不能要求用户从多个工况中选一个公共压力。真正缺失或冲突的条件才提出问题。
 不要因为“水煤气变换”这个反应名称要求确认煤组成。
+evidence 只能是原文中连续的一小段文字，不得包含省略号拼接、推理、解释或自问自答。
+不要为了归一化而修改事实：纯组分的 fraction 为 1 或 100 都可由下游处理，
+纯进料的质量分数和摩尔分数均为 100%，不需要追问基准。
+原文逐个列出的异构体必须保留，不得合并为“二甲苯”。
+绝热出口温度是计算结果，不能用进料温度作占位值；未给定时保留空数组。
+单工况已有进料压力时，case_pressures 可以为空，不能强行填入压力扫描列表。
+HYSYS 提供物性、比热和反应热；Conversion 和平衡计算不要求催化剂装填量、
+停留时间或反应器体积。不要将这些软件计算所需的数据当作用户遗漏的输入。
 原文授权自定流量时，不把空流量当作阻塞问题。反应器选择、热边界默认、
 煤按纯碳确认和标准体积基准由下游规则层处理，不把这些问题塞进其他事实字段。
 只输出 JSON，结构严格为：
@@ -59,6 +68,47 @@ REVIEW_SCHEMA = {
             'properties': {name: {'type': 'string'} for name in ('field', 'question', 'reason')}}},
     },
 }
+
+
+def _source_resolutions(text, facts):
+    """Narrow, deterministic proofs which can discharge a rejected model edit.
+
+    Other rejected edits still pause; a reviewer rejection alone is not evidence
+    that the user omitted something. Never use the reviewer's prose as a proof.
+    """
+    from .normalize import normalize, stated_pure_feed, stated_xylene_isomers
+    resolved = {}
+    pure = stated_pure_feed(text)
+    if pure:
+        resolved['feed_composition'] = ([{'name': pure, 'fraction': 1.0}], '原文明示纯组分进料。')
+        resolved['composition_basis'] = ('pure', '纯组分的质量分数和摩尔分数均为 1。')
+    adiabatic = any(re.search(r'绝热|\badiabatic\b', clause, re.I)
+                    and not re.search(r'不.*绝热|非绝热|等温|not.*adiabatic', clause, re.I)
+                    for clause in re.split(r'[，。；;\n]', text))
+    specified_outlet = bool(re.search(r'出口(?:温度)?\s*(?:为|是|=)?\s*\d|'
+                                     r'outlet\s+(?:temperature\s*)?(?:is|=|at)?\s*\d', text, re.I))
+    if adiabatic and not specified_outlet and not facts.get('outlet_temperatures'):
+        resolved['outlet_temperatures'] = ([], '原文明示绝热，出口温度由模拟求解。')
+        resolved['outlet_temperature_unit'] = (facts.get('outlet_temperature_unit'), '出口温度没有输入设定值。')
+        if (not re.search(r'工况|分别|比较|cases?', text, re.I)
+                and not facts.get('case_pressures') and facts.get('feed_pressure') is not None
+                and 'feed_pressure' not in grounding_failures(facts, text)):
+            resolved['case_pressures'] = ([], '单工况已有进料压力，不需要压力扫描列表。')
+            resolved['case_pressure_unit'] = (facts.get('case_pressure_unit'), '没有压力扫描值。')
+    if stated_xylene_isomers(text) and re.search(r'等摩尔|equal\s+molar', text, re.I):
+        request, report = normalize(facts, text)
+        if (len(request.reactions) == 1 and len(facts.get('reactions') or []) == 1
+                and any('group total restored' in note for note in report.applied)
+                and not any(q.field.startswith('reactions') for q in report.blocking)):
+            # Keep the raw coefficients: normalize performs the proven repair and
+            # records its provenance again during actual planning.
+            resolved['reactions'] = (copy.deepcopy(facts['reactions']),
+                '原文配平方程与等摩尔比例足以恢复异构体总系数；下游独立校验元素守恒。')
+    # This field is a model's commentary, not an engineering input. Actual missing
+    # temperatures, pressures, flows, etc. are checked separately by the planner.
+    resolved['missing_information'] = (copy.deepcopy(facts.get('missing_information') or []),
+        '模型备注不作为独立输入追问，必需条件由确定性预检判断。')
+    return resolved
 
 
 def review_facts(client, text, facts):
@@ -123,13 +173,19 @@ def review_facts(client, text, facts):
     for patch in reply['corrections']:
         if patch['field'] in rollback and patch['field'] not in rejected_fields:
             rejected.append({**patch, 'reason': '关联数值、单位或组成基准的修正未通过，已一并保留原值。'})
-    questions = {q['field']: copy.deepcopy(q) for q in reply['questions']}
+    resolutions = _source_resolutions(text, facts)
+    for name, (value, _reason) in resolutions.items():
+        reviewed[name] = copy.deepcopy(value)
+    questions = {q['field']: copy.deepcopy(q) for q in reply['questions']
+                 if q['field'] not in resolutions}
     labels = {'feed_composition': '进料组成（组分及比例）', 'feed_total': '进料总流量及单位',
               'feed_temperature': '进料温度及单位', 'feed_pressure': '进料压力及单位',
               'case_pressures': '按工况顺序排列的压力列表',
               'outlet_temperatures': '按工况顺序排列的出口温度列表'}
     for item in rejected:
         target = targets.get(item['field'], item['field'])
+        if target in resolutions:
+            continue
         label = labels.get(target, target)
         question = '请确认%s。' % label
         if fields[target].get('type') == 'array':
@@ -139,7 +195,10 @@ def review_facts(client, text, facts):
     reviewed['_review_questions'] = list(questions.values())
     applied = [p for p in reply['corrections'] if p['field'] not in rollback]
     return reviewed, {'status': 'WAITING_INPUT' if questions else 'PASS',
-        'corrections': applied, 'rejected_corrections': rejected, 'questions': list(questions.values())}
+        'corrections': [p for p in applied if p['field'] not in resolutions],
+        'rejected_corrections': rejected, 'questions': list(questions.values()),
+        'deterministic_resolutions': [{'field': name, 'value': value, 'reason': reason}
+                                     for name, (value, reason) in resolutions.items()]}
 
 
 def make_review(client):

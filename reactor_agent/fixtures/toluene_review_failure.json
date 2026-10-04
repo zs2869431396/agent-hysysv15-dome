@@ -1,0 +1,14 @@
+{
+  "provenance": "用户粘贴的审核记录；corrections 与 rejected_corrections 还原为第二模型修正列表。首次抽取仅重建用户展示的相关字段，完整首次回复未提供。",
+  "text": "模拟甲苯歧化： 2 C7H8 → C6H6 + C8H10。\n进料为纯甲苯，总流量6000 kg/h，温度400℃，压力2 MPa。\n甲苯转化率30%，没有动力学参数，不考虑副反应。\n产物为苯和邻、间、对二甲苯，三种二甲苯按等摩尔比例分配。\n反应器绝热，无压降。\n请计算出口温度、摩尔组成、各组分摩尔流量，并检查元素和质量守恒。",
+  "corrections": [
+    {"field":"species","value_json":"[\"甲苯\", \"苯\", \"二甲苯\"]","evidence":"产物为苯和邻、间、对二甲苯，三种二甲苯按等摩尔比例分配。"},
+    {"field":"composition_basis","value_json":"\"mole_fraction\"","evidence":"反应式 2 C7H8 → C6H6 + C8H10 及转化率定义通常基于摩尔；且后续提及“等摩尔比例”，暗示体系以摩尔为基准进行化学计量计算。虽然进料给的是质量流量，但组分分数在化学反应工程中若无特殊说明（如明确说质量分数），结合化学计量数通常指摩尔分数。即便原文未明示basis，根据化学计量逻辑修正为摩尔分数更为准确，或者保留null由下游处理。但考虑到extracted_facts中写的是mass_fraction，而反应是化学计量，这里存在潜在冲突。不过，最严格的错误是：原文只说了“纯甲苯”，fraction应为1或100%。原抽取为100，需标准化为小数或确认单位。通常fraction指摩尔分数或质量分数的小数值。若原文未指定basis，此处不强行修改basis字段，但修正fraction格式。然而，更关键的错误在于reactions中的物种系数。"},
+    {"field":"reactions","value_json":"[{\"name\": \"甲苯歧化\", \"species\": [{\"name\": \"甲苯\", \"coefficient\": -2}, {\"name\": \"苯\", \"coefficient\": 1}, {\"name\": \"二甲苯\", \"coefficient\": 1}], \"reversible\": false}]","evidence":"2 C7H8 → C6H6 + C8H10。...产物为苯和邻、间、对二甲苯，三种二甲苯按等摩尔比例分配。"},
+    {"field":"case_pressures","value_json":"[2]","evidence":"压力2 MPa。...无压降。"},
+    {"field":"outlet_temperatures","value_json":"[400]","evidence":"反应器绝热...请计算出口温度...（注：原文未给出反应热，无法计算实际出口温度，但作为工况定义，若假设理想绝热且无反应热数据时，通常初始猜测或占位符可能使用进口温度，或者此处应标记缺失。但在JSON结构中，outlet_temperatures是数组。原文要求“计算出口温度”，说明这是一个待求量，而非已知条件。因此，outlet_temperatures不应填入具体数值，而应留空或null？契约中outlet_temperatures是number数组。如果原文没有给出出口温度，这属于missing_information。但是，题目问的是“模拟...请计算...”，这意味着出口温度是结果。在输入审核中，如果原文没给出口温度，就不应该填。原抽取为空数组[]，这是正确的吗？不，原抽取的missing_information里提到了无法计算。所以outlet_temperatures应为空或null？契约定义是array of number。如果没有值，应该是空数组[]。原抽取是[]。等等，原抽取的missing_information列出了缺失信息。那么corrections里不需要修正outlet_temperatures为有值。但是，原抽取的species和reactions有误。另外，关于case_pressures，原文只有一个工况，压力2MPa。原抽取case_pressures为空，这是错误的，因为feed_pressure给出了，且无压降，通常case_pressures用于多工况压力扫描，或者表示该工况下的系统压力。如果只有一个工况，case_pressures应包含该压力值。"},
+    {"field":"missing_information","value_json":"[\"反应热数据，无法计算绝热出口温度\", \"产物比热容数据，无法进行能量衡算\"]","evidence":"没有动力学参数...请计算出口温度...（隐含需要热力学数据）"},
+    {"field":"feed_composition","value_json":"[{\"name\": \"甲苯\", \"fraction\": 1.0}]","evidence":"进料为纯甲苯"},
+    {"field":"case_pressure_unit","value_json":"\"MPa\"","evidence":"压力2 MPa。"}
+  ]
+}
