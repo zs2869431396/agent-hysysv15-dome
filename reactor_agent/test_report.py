@@ -166,6 +166,30 @@ def gasification_view() -> dict:
     }
 
 
+class ReportImprovements(unittest.TestCase):
+    def test_component_flows_are_specific_to_each_phase(self):
+        text = render_report(gasification_view())
+        vapour, solid = text.split('出口流股 LIQUID', 1)
+        self.assertIn('由本流股总摩尔流量 × 摩尔分数推算', vapour)
+        self.assertIn('CO：%.4f' % (2033.879 * 0.500119), vapour)
+        self.assertIn('Carbon：1490.9346', solid)
+        self.assertIn('CO：0.0000', solid)
+
+    def test_equilibrium_method_has_a_meaningful_field_and_value(self):
+        from reactor_agent.test_normalize import SMR_FACTS
+        from reactor_agent.normalize import normalize
+        from reactor_agent.pipeline import build_plan
+        from reactor_agent.selection import select_reactor
+        request, report = normalize(SMR_FACTS, '等温重整工况。', scenario_label='smr', phase='gas')
+        decision = select_reactor(request).model_copy(update={'execution_reactor': 'equilibrium'})
+        plan = build_plan(request, decision, report)
+        assumption = next(a for a in plan.assumptions if a.id == 'a-equilibrium-k')
+        text = render_report({'status': 'READY', 'assumptions': [assumption.model_dump()],
+                              'decision': {}, 'executions': []})
+        self.assertIn('reactions.equilibrium_constant = 由 HYSYS 组分 Gibbs 数据拟合', text)
+        self.assertNotIn('reactions = None', text)
+
+
 class BothCallersAgree(unittest.TestCase):
     """Plan 8.2: the same view must render the same text from either path."""
 

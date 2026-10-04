@@ -25,6 +25,7 @@ Two hard rules run through the whole thing:
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -196,7 +197,8 @@ def build_plan(request: ProcessRequest, decision: SelectionDecision,
 
     if decision.execution_reactor == 'equilibrium':
         plan.assumptions.append(Assumption(
-            id='a-equilibrium-k', field='reactions', source='derived', accepted=True,
+            id='a-equilibrium-k', field='reactions.equilibrium_constant',
+            value='由 HYSYS 组分 Gibbs 数据拟合', source='derived', accepted=True,
             scope=('平衡常数由 HYSYS 组分 Gibbs 数据在出口温度上下 150 K 内拟合 '
                    'ln K = A + B/T + C·ln T；工具层校验拟合残差与出口 Q/K；'
                    'Q/K 接近 1 不能证明高温区 Gibbs 数据本身准确')))
@@ -205,10 +207,17 @@ def build_plan(request: ProcessRequest, decision: SelectionDecision,
         # Choosing the thermal boundary is a modelling decision, and "adiabatic
         # because nobody said otherwise" has a real effect on the duty. A reader who
         # cannot tell it apart from a stated condition cannot judge the result.
+        word = '等温' if heat_mode == 'isothermal' else '绝热'
+        english = 'isothermal' if heat_mode == 'isothermal' else 'adiabatic'
+        stated = bool(re.search(word + '|' + english, request.source_text, re.I))
+        if re.search(r'(?:不|非|未|没有|无|not\s+|non[- ])[^。；;，,\n]{0,6}(?:' + word + '|' + english + ')',
+                     request.source_text, re.I):
+            stated = False
         plan.assumptions.append(Assumption(
             id='a-thermal-mode', field='thermal_mode', value=heat_mode,
-            source='agent_default', accepted=False,
-            scope=('题面给出了出口温度，按等温处理（出口温度由外部热流维持）'
+            source='user_text' if stated else 'agent_default', accepted=stated,
+            scope=('题目明确指定%s工况' % word if stated else
+                   '题面给出了出口温度，按等温处理（出口温度由外部热流维持）'
                    if request.operating_cases
                    else '题面未说明热边界，按绝热处理')))
     return plan

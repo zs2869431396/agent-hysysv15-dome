@@ -8,10 +8,8 @@ a pipeline dry run said "已完成选型与规格编译" while the graph said "�
 
 Two rules, both of them the project's:
 
-  * **Nothing is computed here.** Every number is read out of the result the tool layer
-    already validated. The one derived quantity - the oxygen-balance ceiling for the CO
-    yield - is explicit arithmetic over reported molar flows, and it is labelled as
-    what it is.
+  * **No simulation is performed here.** Component flows and the oxygen-balance
+    ceiling are explicit arithmetic over validated results, labelled as derived.
   * **Nothing is hidden.** Sections are omitted only when they are empty; a check that
     the tool layer ran is printed with its verdict, including when the verdict is bad.
 
@@ -19,6 +17,7 @@ Text is Chinese; status codes and field names stay English.
 """
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from hysys_tools.core import atoms_of, canonical
@@ -254,6 +253,13 @@ def _case_block(execution: dict[str, Any]) -> list[str]:
             lines.append('    摩尔组成 %s'
                          % '，'.join('%s %.4f%%' % (k, 100.0 * v)
                                     for k, v in ordered))
+            total = stream.get('molar_flow_kmol_h')
+            if isinstance(total, (int, float)) and not isinstance(total, bool) and math.isfinite(total):
+                lines.append('    各组分摩尔流量（kmol/h，由本流股总摩尔流量 × 摩尔分数推算）：')
+                for name, fraction in ordered:
+                    value = (total * fraction if isinstance(fraction, (int, float))
+                             and not isinstance(fraction, bool) and math.isfinite(fraction) else None)
+                    lines.append('      %s：%s' % (name, _fmt(value, digits=4)))
 
     conversions = results.get('reactant_conversion_percent') or {}
     if conversions:

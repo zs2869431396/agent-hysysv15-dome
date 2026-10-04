@@ -308,6 +308,42 @@ class ThermalBoundaryIsDeclared(unittest.TestCase):
         plan = build_plan(request, decision, report, heat_mode='isothermal')
         self.assertFalse(any(a.id == 'a-thermal-mode' for a in plan.assumptions))
 
+    def test_user_written_adiabatic_is_not_a_default(self):
+        plan = self._plan(TOLUENE_FACTS, TOLUENE_TEXT + '。反应器绝热。', 't')
+        entry = next(a for a in plan.assumptions if a.id == 'a-thermal-mode')
+        self.assertEqual(entry.source, 'user_text')
+        self.assertTrue(entry.accepted)
+        self.assertNotIn('未说明', entry.scope)
+
+    def test_user_written_isothermal_is_not_a_default(self):
+        plan = self._plan(SMR_FACTS, '分别计算两个等温工况。', 'smr')
+        entry = next(a for a in plan.assumptions if a.id == 'a-thermal-mode')
+        self.assertEqual(entry.source, 'user_text')
+
+    def test_negated_mode_is_not_stated(self):
+        plan = self._plan(TOLUENE_FACTS, TOLUENE_TEXT + '。没有指定绝热条件。', 't')
+        entry = next(a for a in plan.assumptions if a.id == 'a-thermal-mode')
+        self.assertEqual(entry.source, 'agent_default')
+
+    def test_equal_xylene_ratio_is_user_given(self):
+        _, report = normalize(TOLUENE_FACTS,
+            TOLUENE_TEXT + '。三种二甲苯按等摩尔比例分配。', scenario_label='t')
+        entry = next(a for a in report.assumptions if a.id == 'a-isomer-split')
+        self.assertEqual(entry.source, 'user_text')
+        self.assertTrue(entry.accepted)
+        self.assertNotIn('未给比例', entry.scope)
+
+    def test_equal_split_without_stated_ratio_remains_default(self):
+        _, report = normalize(TOLUENE_FACTS, TOLUENE_TEXT, scenario_label='t')
+        entry = next(a for a in report.assumptions if a.id == 'a-isomer-split')
+        self.assertEqual(entry.source, 'agent_default')
+
+    def test_unrelated_equal_molar_ratio_is_not_xylene_evidence(self):
+        _, report = normalize(TOLUENE_FACTS,
+            TOLUENE_TEXT + '。三种二甲苯未给比例，甲烷与水等摩尔。', scenario_label='t')
+        entry = next(a for a in report.assumptions if a.id == 'a-isomer-split')
+        self.assertEqual(entry.source, 'agent_default')
+
 
 class Reactions(unittest.TestCase):
 

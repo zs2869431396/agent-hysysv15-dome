@@ -371,9 +371,10 @@ def _stoichiometry(reaction: dict, present: list[str],
             if member not in report.expanded_species:
                 report.expanded_species.append(member)
         report.record(
-            '%r expanded to %s, split equally (the request names the isomers but '
-            'gives no ratio; recorded as an assumption)'
-            % (str(raw_name), ', '.join(members)))
+            '%r expanded to %s, split equally (%s)'
+            % (str(raw_name), ', '.join(members),
+               'user-stated equal molar ratio' if _equal_xylene_split_stated(source_text)
+               else 'no stated ratio; recorded as an assumption'))
 
     for entry in (reaction.get('species') or []):
         try:
@@ -447,8 +448,10 @@ def _restore_isomer_group_total(stoich: dict[str, float], source_text: str,
         if name not in report.expanded_species:
             report.expanded_species.append(name)
     report.record('xylene group total restored from the written equation: %g -> %g; '
-                  'o/m/p coefficients %g each (equal split recorded as an assumption)'
-                  % (sum(values), total, total / 3))
+                  'o/m/p coefficients %g each (%s)'
+                  % (sum(values), total, total / 3,
+                     'user-stated equal molar ratio' if _equal_xylene_split_stated(source_text)
+                     else 'equal split recorded as an assumption'))
 
 
 def _kinetic_data(facts: dict[str, Any], source_text: str) -> 'KineticData | None':
@@ -591,6 +594,17 @@ def _flow_anchor(fractions: dict[str, float],
 
 # The three xylene isomers, as the exam names them.
 _XYLENE_ISOMERS = ('o-Xylene', 'm-Xylene', 'p-Xylene')
+
+
+def _equal_xylene_split_stated(text: str) -> bool:
+    for clause in re.split(r'[。；;，,\n]', text):
+        if not re.search(r'二甲苯|xylene', clause, re.I):
+            continue
+        if re.search(r'(?:不|非|未)[^。；;\n]{0,6}等摩尔', clause):
+            continue
+        if re.search(r'等摩尔|equal\s+molar|1\s*[:：]\s*1\s*[:：]\s*1', clause, re.I):
+            return True
+    return False
 
 
 def _isomer_split_applies(reactions: list[ReactionSpec]) -> bool:
@@ -966,14 +980,16 @@ def normalize(facts: dict[str, Any], source_text: str, *,
             scope='进料含参与反应的固体碳，按 solid_carbon=saturation 组合流程执行'
                   '（已随工具层验收）'))
 
-    # The xylene isomers are the one place the exam names several species without a
-    # ratio. Whichever way the split arises, it is an assumption of ours.
+    # An equal split may be specified by the user or selected as a default.
     if _isomer_split_applies(reactions):
+        stated = _equal_xylene_split_stated(source_text)
         report.assumptions.append(Assumption(
             id='a-isomer-split', field='reactions.stoichiometry',
-            value='o/m/p-Xylene 各 1/3', source='agent_default', accepted=False,
-            scope='题目列出邻、间、对三种二甲苯但未给比例，按等分处理；'
-                  '这不是工业选择性，也不是热力学预测'))
+            value='o/m/p-Xylene 各 1/3',
+            source='user_text' if stated else 'agent_default', accepted=stated,
+            scope=('题目明确指定三种二甲苯等摩尔分配' if stated else
+                   '题目列出邻、间、对三种二甲苯但未给比例，按等分处理；'
+                   '这不是工业选择性，也不是热力学预测')))
 
     for note in facts.get('missing_information') or []:
         report.notes.append('模型指出未提供：%s' % note)
