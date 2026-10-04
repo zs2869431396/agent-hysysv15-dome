@@ -1,5 +1,10 @@
 # AGENT_FIX_NOTES
 
+> 历史记录说明：文中旧版 `reactor_agent.web`、`web_static/index.html` 和
+> `test_web.py` 的描述是当时的实施记录。2026-10-04 已统一为 Streamlit，
+> 旧前端与 HTTP 测试已删除，共享后端迁入 `ui_backend.py`。当前启动方式以根目录 README 为准。
+
+
 本文件记录 `AGENT_FIX_PLAN.md` 执行过程中的实际改动、与计划的偏离及理由、以及最终的测试数量。
 计划步骤 12.4 要求新建它；按要求**每完成一步就追加一段**，不最后补写。
 

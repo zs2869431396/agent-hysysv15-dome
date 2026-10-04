@@ -9,9 +9,9 @@ from streamlit.testing.v1 import AppTest
 
 from reactor_agent.chat_service import ChatService, EXECUTION_LOCK, chat_answers
 from reactor_agent.llm import ChatClient, LlmConfig
-from reactor_agent.test_web import (TOLUENE_FACTS, TOLUENE_TEXT,
+from reactor_agent.fixtures.ui_cases import (TOLUENE_FACTS, TOLUENE_TEXT,
                                     GASIFICATION_FACTS, GASIFICATION_TEXT)
-from reactor_agent.web import WebApp, Settings
+from reactor_agent.ui_backend import SessionApp, Settings
 
 
 class ChatTests(unittest.TestCase):
@@ -20,7 +20,7 @@ class ChatTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.calls = []
         self.facts = TOLUENE_FACTS
-        self.app = WebApp(root=Path(self.tmp.name), settings=Settings(
+        self.app = SessionApp(root=Path(self.tmp.name), settings=Settings(
             base='https://example.test/v1', model='offline', key='offline-secret-for-tests-only'))
         def transport(*args):
             self.calls.append(args)
@@ -28,7 +28,7 @@ class ChatTests(unittest.TestCase):
                 'message': {'content': json.dumps(self.facts)}}]})
         client = ChatClient(LlmConfig(base='https://example.test/v1',
             key='offline-secret-for-tests-only', min_interval=0), transport=transport, sleeper=lambda _: None)
-        self.patcher = patch.object(WebApp, 'client', return_value=client)
+        self.patcher = patch.object(SessionApp, 'client', return_value=client)
         self.patcher.start()
         self.addCleanup(self.patcher.stop)
         self.service = ChatService(self.app)
@@ -123,7 +123,7 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(chat_answers('42', questions[:1]), {'a': '42'})
 
     def test_settings_are_session_local(self):
-        other = WebApp(root=Path(self.tmp.name) / 'other', settings=Settings(key='other-secret'))
+        other = SessionApp(root=Path(self.tmp.name) / 'other', settings=Settings(key='other-secret'))
         self.app.settings.key = 'changed'
         self.assertEqual(other.settings.resolve().key, 'other-secret')
 
@@ -167,7 +167,7 @@ class ChatTests(unittest.TestCase):
     def test_three_demo_scenarios_trace_end_to_end_with_offline_workers(self):
         from reactor_agent.test_graph import RecordingAdapter
         from reactor_agent.test_live_intake import fixture
-        from reactor_agent.web import scenarios
+        from reactor_agent.ui_backend import scenarios
         for scenario, facts in (('toluene', TOLUENE_FACTS), ('smr', fixture('smr')),
                                 ('gasification', GASIFICATION_FACTS)):
             with self.subTest(scenario=scenario):
@@ -199,7 +199,7 @@ class ChatTests(unittest.TestCase):
     def test_timeout_stops_later_cases_and_is_recorded_as_failure(self):
         from reactor_agent.test_graph import RecordingAdapter
         from reactor_agent.test_live_intake import fixture
-        from reactor_agent.web import scenarios
+        from reactor_agent.ui_backend import scenarios
         self.facts = fixture('smr')
         adapter = RecordingAdapter(['TIMEOUT'])
         with patch('reactor_agent.adapters.hysys_cli.HysysCliAdapter', return_value=adapter):

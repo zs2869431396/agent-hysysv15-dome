@@ -163,13 +163,13 @@ python -m reactor_agent --scenario gasification
 python -m reactor_agent --scenario gasification --accept-defaults
 
 # 本机网页界面（只监听 127.0.0.1；key 在页面上填，不落盘）
-python -m reactor_agent.web
+python -m streamlit run reactor_agent/streamlit_app.py --server.address 127.0.0.1 --server.port 8501 --browser.gatherUsageStats false
 
 # 真机（在装有 HYSYS 的工作站上）
 python -m reactor_agent --scenario toluene --execute --accept-defaults
 ```
 
-**凭据只从环境变量读取**（`TR_BASE` / `TR_KEY` / `TR_MODEL`），不写入任何文件、
+**凭据在界面填写，或从环境变量及项目根目录 `.env` 读取**（`TR_BASE` / `TR_KEY` / `TR_MODEL`），程序不把凭据写入产物、
 日志或检查点；由测试强制保证。
 
 ## 六、AI 协作方式

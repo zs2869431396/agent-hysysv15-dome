@@ -1,18 +1,18 @@
-"""Chat UI orchestration; extraction, checkpointing and execution stay in WebApp."""
+"""Chat UI orchestration; extraction, checkpointing and execution stay in SessionApp."""
 from __future__ import annotations
 
 import json
 import threading
 from typing import Any
 
-from .web import WebApp, Run, persist_run, questions_of, scenarios
+from .ui_backend import SessionApp, Run, persist_run, questions_of, scenarios
 from .process_trace import ProcessTrace
 
 EXECUTION_LOCK = threading.Lock()
 
 
 class ChatService:
-    def __init__(self, app: WebApp):
+    def __init__(self, app: SessionApp):
         self.app = app
 
     def start(self, text: str, *, scenario: str = '', execute: bool = False,

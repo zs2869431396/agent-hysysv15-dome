@@ -88,8 +88,8 @@ status ALL_SCENARIOS_PASS
 │   ├── adapters/             # 子进程执行工具层 + 执行台账
 │   ├── streamlit_app.py      # 中文聊天界面（Streamlit）
 │   ├── chat_service.py       # 复用原有图与检查点的聊天交互
-│   ├── web.py                # 共享后端与旧版表单网页
-│   ├── web_static/index.html #   页面：模型连接、需求、追问、结果、下载
+│   ├── ui_backend.py         # 会话、模型设置、检查点和产物管理
+│   ├── process_trace.py      # 实际执行事件与过程记录
 │   ├── __main__.py           # CLI：python -m reactor_agent（默认走状态图）
 │   └── test_*.py             # 智能体离线回归测试
 ├── docs/
@@ -248,7 +248,7 @@ Miniconda3 / anaconda3 的 `hysys-agent` 环境、当前激活环境，最后使
   ```
 
   `.env` 已被 Git 和提交包排除；不要把它放在 `reactor_agent/` 目录下。
-- 启动器只监听本机 `127.0.0.1`。旧版表单网页仍可通过 `python -m reactor_agent.web` 启动。
+- 启动器只监听本机 `127.0.0.1`。前端统一使用 Streamlit，旧版 HTML 页面与 HTTP 服务已移除。
 
 
 ## 能力范围与边界

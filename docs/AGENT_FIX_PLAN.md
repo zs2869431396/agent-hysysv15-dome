@@ -1,5 +1,10 @@
 # 智能体层修复实施计划（交给本地 Agent 执行）
 
+> 历史记录说明：文中旧版 `reactor_agent.web`、`web_static/index.html` 和
+> `test_web.py` 的描述是当时的实施记录。2026-10-04 已统一为 Streamlit，
+> 旧前端与 HTTP 测试已删除，共享后端迁入 `ui_backend.py`。当前启动方式以根目录 README 为准。
+
+
 2026-10-03
 
 ## 背景、目标与交付物

@@ -313,7 +313,7 @@ python -m reactor_agent --scenario gasification --accept-defaults
 | **气化只验收了"碳 + 水"进料** | 其他组成的固体进料不在验收范围内 |
 | **报告层的 Q/K 测试夹具是人工构造的** | 形状与工具层一致，等工作站真实结果回来后替换 |
 | **抽取依赖外部模型服务** | 需要 `TR_KEY`；模型不可用时明确报错并停止，不猜 |
-| **有本机 Streamlit 聊天界面**（双击 `Start-Demo.bat` 或 `Run-Agent-UI.cmd`） | 默认 `127.0.0.1:8501`；中文聊天、追问表单、报告下载，复用原有业务图。key 在页面填写，仅保存在会话内存中。CLI 仍是主要真机验收证据；旧表单入口 `python -m reactor_agent.web` 保留 |
+| **有本机 Streamlit 聊天界面**（双击 `Start-Demo.bat` 或 `Run-Agent-UI.cmd`） | 默认 `127.0.0.1:8501`；中文聊天、追问表单、报告下载，复用原有业务图。key 在页面填写，仅保存在会话内存中。CLI 仍是主要真机验收证据；旧版 HTML/HTTP 前端已删除，统一使用 Streamlit |
 
 ---
 

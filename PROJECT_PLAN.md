@@ -346,11 +346,11 @@ token 才吐 42–47 字，耗时 27–47 秒）。
 - [x] 数值表由程序生成；重整展示同基准对比表；气化把 CO 收率放在明确位置
 - [x] 显示数据来源、假设、限制、校验与失败原因
 
-实现：`python -m reactor_agent.web`（或双击 `Run-Agent-UI.cmd`），只监听 `127.0.0.1:8765`，
-只用标准库 `http.server`，页面是一个内联 CSS/JS 的 HTML 文件。凭据在页面上运行时填写，
-只存在服务进程内存中；`GET /api/settings` 只返回是否已设置，任何响应与产物都不含它
-（`test_web.py::TheKeyIsContained`）。刷新页面用 `GET /api/run/<id>` 只读检查点，
-**不会重新调用模型**。
+实现：Streamlit 中文聊天界面（双击 `Start-Demo.bat` 或 `Run-Agent-UI.cmd`），
+默认只监听 `127.0.0.1:8501`。`ui_backend.py` 管理会话和检查点，`chat_service.py`
+复用原有业务图；旧 HTTP 表单前端已删除。凭据仅保存在当前会话内存中，不进入产物。
+页面展示实际模型抽取、方案检查、追问、各工况 HYSYS 调用与结果返回，并提供过程下载。
+页面重绘不重新调用模型；由 `test_streamlit.py` 与 `test_ui_backend.py` 覆盖。
 
 **验收**：用户无需编辑 JSON；界面刷新不触发重复计算；解释模型失败时仍能交付数值表。
 

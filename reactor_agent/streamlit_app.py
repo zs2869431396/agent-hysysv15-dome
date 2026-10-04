@@ -12,7 +12,7 @@ import streamlit as st
 # Streamlit executes this file as a script, including when launched by double-click.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from reactor_agent.chat_service import ChatService, chat_answers
-from reactor_agent.web import PROJECT_ROOT, SCENARIO_LABELS, WebApp, scenarios
+from reactor_agent.ui_backend import PROJECT_ROOT, SCENARIO_LABELS, SessionApp, scenarios
 
 STATUS = {'READY': '方案已就绪', 'PASS': '模拟通过', 'FAILED': '运行失败',
           'WAITING_INPUT': '等待补充信息', 'RUNNING': '正在处理', 'DONE': '已完成',
@@ -68,7 +68,7 @@ def main():
     st.set_page_config(page_title='HYSYS 模拟助手', page_icon='⚗️', layout='centered')
     if 'service' not in st.session_state:
         root = PROJECT_ROOT / 'agent-runs' / ('chat-' + uuid.uuid4().hex[:12])
-        st.session_state.service = ChatService(WebApp(root=root))
+        st.session_state.service = ChatService(SessionApp(root=root))
     if 'conversations' not in st.session_state:
         st.session_state.conversations = [[]]
         st.session_state.conversation = 0
