@@ -72,30 +72,74 @@ def review_facts(client, text, facts):
     reviewed = copy.deepcopy(facts)
     seen = set()
     fields = EXTRACTION_SCHEMA['properties']
+    rejected = []
     for patch in reply['corrections']:
         name, quote = patch['field'], patch['evidence']
-        if name not in fields or name in seen or not quote.strip() or quote not in text:
-            raise LlmError('审核修正缺少有效原文依据：%s' % name, kind='bad_json')
+        if name not in fields or name in seen:
+            raise LlmError('审核修正字段无效或重复：%s' % name, kind='bad_json')
         seen.add(name)
+        if not quote.strip() or quote not in text:
+            rejected.append({**patch, 'reason': '审核修正没有提供可逐字核对的原文依据。'})
+            continue
         try:
             value = json.loads(patch['value_json'])
-        except (TypeError, ValueError) as exc:
-            raise LlmError('审核修正值不是 JSON：%s' % name, kind='bad_json') from exc
+        except (TypeError, ValueError):
+            rejected.append({**patch, 'reason': '审核修正值的格式无法解析。'})
+            continue
         errors = validate_facts({name: value})
         if errors or not valid_value(value, fields[name]):
-            raise LlmError('审核修正类型无效：%s' % '; '.join(errors), kind='bad_json')
+            rejected.append({**patch, 'reason': '审核修正值的类型或结构无效。'})
+            continue
         reviewed[name] = value
     # Check each changed numeric field against its own quote using the final unit.
     for patch in reply['corrections']:
         name = patch['field']
+        if any(item['field'] == name for item in rejected):
+            continue
         failures = grounding_failures(reviewed, patch['evidence'])
         if any(f == name or f.startswith(name + '[') for f in failures):
-            raise LlmError('审核修正数值无法对应原文依据：%s' % name, kind='bad_json')
+            rejected.append({**patch, 'reason': '审核修正数值或物理量无法与引用对应。'})
     for question in reply['questions']:
         if question['field'] not in fields or not question['question'].strip():
             raise LlmError('审核追问字段无效', kind='bad_json')
-    reviewed['_review_questions'] = copy.deepcopy(reply['questions'])
-    return reviewed, {'status': 'WAITING_INPUT' if reply['questions'] else 'PASS', **reply}
+    # A value and its unit/basis must roll back together; retaining half a rejected
+    # correction could silently reinterpret the original number or composition.
+    groups = [('feed_composition', 'composition_basis'), ('feed_total', 'feed_unit'),
+              ('feed_temperature', 'feed_temperature_unit'), ('feed_pressure', 'feed_pressure_unit'),
+              ('case_pressures', 'case_pressure_unit'), ('outlet_temperatures', 'outlet_temperature_unit')]
+    rejected_fields = {item['field'] for item in rejected}
+    rollback = set(rejected_fields)
+    targets = {}
+    for group in groups:
+        if rejected_fields.intersection(group):
+            rollback.update(group)
+            for name in group:
+                targets[name] = group[0]
+    for name in rollback:
+        if name in facts:
+            reviewed[name] = copy.deepcopy(facts[name])
+        else:
+            reviewed.pop(name, None)
+    for patch in reply['corrections']:
+        if patch['field'] in rollback and patch['field'] not in rejected_fields:
+            rejected.append({**patch, 'reason': '关联数值、单位或组成基准的修正未通过，已一并保留原值。'})
+    questions = {q['field']: copy.deepcopy(q) for q in reply['questions']}
+    labels = {'feed_composition': '进料组成（组分及比例）', 'feed_total': '进料总流量及单位',
+              'feed_temperature': '进料温度及单位', 'feed_pressure': '进料压力及单位',
+              'case_pressures': '按工况顺序排列的压力列表',
+              'outlet_temperatures': '按工况顺序排列的出口温度列表'}
+    for item in rejected:
+        target = targets.get(item['field'], item['field'])
+        label = labels.get(target, target)
+        question = '请确认%s。' % label
+        if fields[target].get('type') == 'array':
+            question += '请填写 JSON 列表；原抽取值为：%s' % json.dumps(facts.get(target), ensure_ascii=False)
+        questions[target] = {'field': target, 'question': question,
+            'reason': item['reason'] + '该修正未采用，确认前不会执行 HYSYS。'}
+    reviewed['_review_questions'] = list(questions.values())
+    applied = [p for p in reply['corrections'] if p['field'] not in rollback]
+    return reviewed, {'status': 'WAITING_INPUT' if questions else 'PASS',
+        'corrections': applied, 'rejected_corrections': rejected, 'questions': list(questions.values())}
 
 
 def make_review(client):

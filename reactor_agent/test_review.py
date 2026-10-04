@@ -159,14 +159,19 @@ class ReviewTests(unittest.TestCase):
             {'corrections': [], 'questions': [], 'approved': True},
             {'corrections': [patch_field('feed_total', float('nan'), '甲苯')], 'questions': []},
         ]
-        for reply in replies:
+        for index, reply in enumerate(replies):
             with self.subTest(reply=reply):
                 client, calls = model_client(TOLUENE_FACTS, reply)
                 adapter = RecordingAdapter()
                 state = build_graph(client, adapter=adapter, dry_run=False).invoke(initial_state(TOLUENE_TEXT), {'configurable': {'thread_id': 'review-test'}})
-                self.assertEqual(state['status'], 'FAILED')
-                self.assertEqual(state['review']['status'], 'FAILED')
+                expected = 'WAITING_INPUT' if index in (0, 1, 4, 7) else 'FAILED'
+                self.assertEqual(state['status'], expected)
+                self.assertEqual(state['review']['status'], expected)
                 self.assertFalse(adapter.calls)
+                if expected == 'WAITING_INPUT':
+                    self.assertTrue(state['blocking'])
+                    for field, value in TOLUENE_FACTS.items():
+                        self.assertEqual(state['facts'][field], value)
 
     def test_exhausted_request_budget_fails_review_without_execution(self):
         client, calls = model_client(TOLUENE_FACTS, EMPTY_REVIEW, max_requests=1)
@@ -200,8 +205,41 @@ class ReviewTests(unittest.TestCase):
             {'corrections': [patch_field('feed_total', 12345, '甲苯')], 'questions': []})
         adapter = RecordingAdapter()
         run = run_pipeline(TOLUENE_TEXT, client=client, adapter=adapter, dry_run=False)
-        self.assertEqual(run.status, 'FAILED')
+        self.assertEqual(run.status, 'WAITING_INPUT')
         self.assertFalse(adapter.calls)
+
+    def test_unquoted_composition_correction_pauses_and_user_can_resume(self):
+        client, calls = model_client(PRESSURE_FACTS, {'corrections': [
+            patch_field('feed_composition', [{'name': '甲烷', 'fraction': 50},
+                {'name': '水', 'fraction': 50}], '甲烷占四分之一，水占四分之三')], 'questions': []})
+        graph = build_graph(client)
+        config = {'configurable': {'thread_id': 'rejected-composition'}}
+        state = graph.invoke(initial_state(PRESSURE_TEXT), config)
+        self.assertEqual(state['status'], 'WAITING_INPUT')
+        self.assertEqual([q['id'] for q in state['blocking']], ['q-review:feed_composition'])
+        self.assertEqual(state['facts']['feed_composition'], PRESSURE_FACTS['feed_composition'])
+        self.assertTrue(state['review']['rejected_corrections'])
+        state = graph.invoke(Command(resume={'q-review:feed_composition': '不知道'}), config)
+        self.assertEqual(state['status'], 'WAITING_INPUT')
+        state = graph.invoke(Command(resume={'q-review:feed_composition': json.dumps(
+            PRESSURE_FACTS['feed_composition'], ensure_ascii=False)}), config)
+        self.assertEqual(state['status'], 'READY')
+        self.assertEqual(len(state['cases']), 2)
+        self.assertEqual(len(calls), 2)
+
+    def test_rejected_composition_rolls_back_basis_but_keeps_unrelated_valid_patch(self):
+        facts = dict(PRESSURE_FACTS, feed_total=None)
+        reply = {'corrections': [
+            patch_field('feed_composition', [{'name': '甲烷', 'fraction': 50}], '无效引用'),
+            patch_field('composition_basis', 'mass_fraction', '摩尔组成为甲烷25%、水蒸气75%'),
+            patch_field('feed_total', 2000, '进料总流量2000 kmol/h')], 'questions': []}
+        client, _ = model_client(facts, reply)
+        state = build_graph(client).invoke(initial_state(PRESSURE_TEXT),
+            {'configurable': {'thread_id': 'rollback-basis'}})
+        self.assertEqual(state['status'], 'WAITING_INPUT')
+        self.assertEqual(state['facts']['composition_basis'], facts['composition_basis'])
+        self.assertEqual(state['facts']['feed_total'], 2000)
+        self.assertEqual([p['field'] for p in state['review']['corrections']], ['feed_total'])
 
     def test_ui_honors_total_request_budget_from_environment(self):
         config = Settings(env={'TR_MAX_REQUESTS': '2', 'TR_ATTEMPTS': '1', 'TR_GAP': '0'}).config()
