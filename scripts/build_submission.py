@@ -47,7 +47,7 @@ INCLUDE_FILES = (
     '.gitignore',
     'Run-Agent-On-Workstation.cmd', 'Run-Offline-Checks.cmd',
     'Run-Remote-Validation.cmd', 'Run-Native-Flow-Validation.cmd', 'Run-Tool-Layer.cmd',
-    'Run-Agent-UI.cmd',
+    'Run-Agent-UI.cmd', 'Start-Demo.bat',
 )
 
 # Acceptance runs worth shipping as evidence. Only the accepted ones, by name, so a

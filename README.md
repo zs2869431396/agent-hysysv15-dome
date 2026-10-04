@@ -86,7 +86,9 @@ status ALL_SCENARIOS_PASS
 │   │   ├── explain.py        #   调用 report.py 渲染中文解释
 │   │   └── answers.py        #   把用户作答并回事实（宽松解析）
 │   ├── adapters/             # 子进程执行工具层 + 执行台账
-│   ├── web.py                # 本机网页界面（标准库 http.server，只监听 127.0.0.1）
+│   ├── streamlit_app.py      # 中文聊天界面（Streamlit）
+│   ├── chat_service.py       # 复用原有图与检查点的聊天交互
+│   ├── web.py                # 共享后端与旧版表单网页
 │   ├── web_static/index.html #   页面：模型连接、需求、追问、结果、下载
 │   ├── __main__.py           # CLI：python -m reactor_agent（默认走状态图）
 │   └── test_*.py             # 373 项离线测试
@@ -202,22 +204,32 @@ python -m hysys_tools --spec specs\case.json --folder runs\unique-run-id
 > 每次必须使用**全新的输出目录**。同一 HYSYS 实例只允许串行调用。
 > 工具层只会修改和关闭**本次自己创建的**案例，不会通过活动文档定位或改动用户原有的案例。
 
-## 网页界面（本机，可选）
+## 中文聊天界面（Streamlit）
 
-不想敲命令时用它：填模型连接 → 贴需求 → 回答追问 → 看结果与下载文件。
+像聊天一样提交模拟题目，在消息中回答追问、查看结果和下载方案。复用 CLI 的同一套
+提取、校验、反应器选型、LangGraph 检查点、HYSYS 执行与报告逻辑。
 
 ```bash
-python -m reactor_agent.web              # 默认 http://127.0.0.1:8765
-python -m reactor_agent.web --port 8899  # 换端口
+conda activate hysys-agent
+python -m pip install -r requirements.txt
+python -m streamlit run reactor_agent/streamlit_app.py --server.address 127.0.0.1 --server.port 8501 --browser.gatherUsageStats false
 ```
 
-也可以双击 `Run-Agent-UI.cmd`（可带端口参数），它会设好入口并打开浏览器。
+也可以直接双击 **Start-Demo.bat** 或 **Run-Agent-UI.cmd**，自动打开
+http://127.0.0.1:8501。启动器优先使用 `HYSYS_AGENT_PYTHON`，随后寻找用户目录下的
+Miniconda3 / anaconda3 的 `hysys-agent` 环境、当前激活环境，最后使用 PATH 中的 Python。
+自定义安装路径时，可设置 `HYSYS_AGENT_PYTHON` 为该环境的 python.exe；端口可用
+`Start-Demo.bat 8502` 指定。
 
-- **只监听 `127.0.0.1`**，别的机器访问不到；只用标准库 `http.server`，没有新依赖。
-- **凭据在页面上运行时填写**，只保存在服务进程内存里，进程退出即失效；页面上的 Key
-  输入框是 `type="password"`。`GET /api/settings` 只回答"是否已设置"，任何接口的响应
-  都不含它，也不写进检查点、`state.json`、`explanation.txt` 或日志。
-- 不想每次输入，可以在**项目根目录**放一个 `.env`（只读，已在 `.gitignore` 里，不进提交包）：
+- 侧栏提供新建对话、当前会话的对话列表、中文运行选项和模型连接设置。
+- 默认“生成模拟方案”；真实计算选择“执行 HYSYS 模拟”并确认工作站准备就绪。
+- 三个题目示例只填入输入框，点击发送才会开始请求。
+- 追问在消息中的表单里填写，默认答案会预填；输入“默认”可采用全部默认答案。
+  单个追问也可直接在聊天框回复，多个问题请用表单回答。
+- 页面组件更新、下载、切换对话不会调用模型或重复执行案例。重新加载浏览器会建立新会话，
+  对话列表不跨会话保存；检查点和模拟文件仍保存在 `agent-runs/chat-*/` 下。
+- API Key 使用密码框，仅保存在当前会话内存中，不写入模拟文件、检查点或对话记录。
+  页面填写优先于环境变量和项目根目录 `.env`：
 
   ```
   TR_BASE=https://tokenrhythm.studio/v1
@@ -225,13 +237,9 @@ python -m reactor_agent.web --port 8899  # 换端口
   TR_KEY=<your key>
   ```
 
-  优先级：页面填写 > 环境变量 > `.env`。**不要把 `.env` 放进 `reactor_agent/`**，
-  那个目录会被整目录打包。
-- 默认 dry run；勾选"真实执行 HYSYS"时还必须勾选"工作站已打开 HYSYS 且没有其他模拟
-  在运行"，且同一时间只允许一个真实执行。
-- 暂停时逐题显示问题与原因，默认答案预填在输入框里，回车即可采用。
-- 刷新页面只读检查点，**不会重新调用模型**，也不会重复跑案例。
-- 运行目录与 CLI 相同（`agent-runs/`），产物同名，可在页面上直接下载。
+  `.env` 已被 Git 和提交包排除；不要把它放在 `reactor_agent/` 目录下。
+- 启动器只监听本机 `127.0.0.1`。旧版表单网页仍可通过 `python -m reactor_agent.web` 启动。
+
 
 ## 能力范围与边界
 

@@ -12,6 +12,7 @@ pydantic==2.13.5                    # 三层数据模型；同时提供 LLM 结�
 langgraph==1.2.12                   # 主流程 StateGraph、interrupt 与 checkpoint
 langgraph-checkpoint-sqlite==3.1.1  # 让中断的运行在进程退出后仍可恢复
 langchain-core==1.6.6               # langgraph 的底层依赖，显式锁定以免升级漂移
+streamlit==1.65.0                  # 中文聊天前端
 
 # --- 工具层 ---
 # 工具层本身只用标准库，离线预检与 110 项自检不需要任何第三方包。

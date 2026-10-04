@@ -9,8 +9,8 @@ the same run folders and the same report as the CLI; only the input method diffe
 Three rules shape this module, and none of them is incidental:
 
   * **Standard library only.** `http.server.ThreadingHTTPServer` and one HTML file with
-    inline CSS and JavaScript. The project forbids new dependencies, and an interface
-    is not a good reason to add one.
+    inline CSS and JavaScript for the legacy form interface. The default UI is now
+    Streamlit; it reuses WebApp below without running this HTTP server.
 
   * **The key never lands anywhere.** It is read from the page (or `TR_BASE`/`TR_MODEL`
     and `TR_KEY` in the environment, or a `.env` file in the project root) and kept in
