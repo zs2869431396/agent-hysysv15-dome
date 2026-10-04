@@ -80,6 +80,9 @@ def make_plan_node():
     graph is fine and several graphs can share it."""
 
     def plan_node(state: AgentState) -> dict[str, Any]:
+        if state.get('review', {}).get('status') == 'FAILED':
+            return {'status': FAILED, 'cases': [], 'blocking': [], 'pending_questions': [],
+                    'problems': [state['extraction_error']]}
         answer_notes: list[str] = []
         facts = apply_answers(state.get('facts') or {}, state.get('answers') or {},
                               note=answer_notes)

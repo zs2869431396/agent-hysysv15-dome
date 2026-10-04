@@ -950,7 +950,8 @@ def extract(client: ChatClient, text: str, kind: str | None = None,
 
 
 def extract_verified(client: ChatClient, text: str, kind: str = '',
-                     allowed: set[str] | None = None) -> tuple[Extraction, list[str]]:
+                     allowed: set[str] | None = None, *,
+                     review: bool | None = None) -> tuple[Extraction, list[str]]:
     """Extract and then check required fields and grounding.
 
     Returns the extraction and a list of problems. An empty list means the facts are
@@ -967,7 +968,15 @@ def extract_verified(client: ChatClient, text: str, kind: str = '',
     the caller must turn them into blocking questions - a hallucinated value that
     merely appears in a warning list will still be used to build a case.
     """
-    extraction = extract(client, text, kind=kind or None)
+    enabled = client.config.review if review is None else review
+    extraction = extract(client, text, kind=None if client.config.review else kind or None)
+    if enabled and not extraction.error:
+        from .review import review_facts
+        try:
+            extraction.facts, record = review_facts(client, text, extraction.facts)
+            extraction.facts['_review_record'] = record
+        except LlmError as exc:
+            extraction.error = '输入审核失败：%s' % exc
     problems: list[str] = []
     if extraction.error:
         problems.append('model call failed: %s' % extraction.error)

@@ -28,6 +28,7 @@ from hysys_tools.core import (
     SPEC_SCHEMA,
     library_name,
     property_package_name,
+    to_kpa,
 )
 from hysys_tools import precheck
 
@@ -118,7 +119,7 @@ def feed_questions(request: ProcessRequest) -> list[Question]:
         if feed.total_flow is None and not feed.flows:
             questions.append(Question(
                 id='q-flow-missing-%d' % index,
-                field='feeds[%d]' % index, blocking=True,
+                field='feeds[%d].total_flow' % index, blocking=True,
                 question='进料流量是多少？请给出数值与单位。',
                 reason='没有流量就无法建立物料衡算。'))
         if feed.temperature is None:
@@ -127,7 +128,8 @@ def feed_questions(request: ProcessRequest) -> list[Question]:
                 field='feeds[%d].temperature' % index, blocking=True,
                 question='进料温度是多少？',
                 reason='进料温度是物料与能量衡算的必需条件。'))
-        if feed.pressure is None:
+        if feed.pressure is None and not (index == 0 and request.operating_cases
+                and all(c.feed_pressure is not None for c in request.operating_cases)):
             questions.append(Question(
                 id='q-press-missing-%d' % index,
                 field='feeds[%d].pressure' % index, blocking=True,
@@ -286,6 +288,9 @@ def _case_name(plan: ModelingPlan, case: OperatingCase) -> str:
         if source is not None:
             outlet = source.outlet_temperature
     if outlet is not None:
+        duplicates = sum(c.outlet_temperature == outlet for c in plan.request.operating_cases)
+        if duplicates > 1:
+            return safe_case_name('%s-%gC-%s' % (base, float(outlet), case.case_id))
         return safe_case_name('%s-%gC' % (base, float(outlet)))
     if len(plan.cases) > 1:
         return safe_case_name('%s-%s' % (base, case.case_id))
@@ -384,6 +389,19 @@ def compile_case(plan: ModelingPlan, case: OperatingCase) -> dict:
                         for a in plan.assumptions],
         'open_questions': [q.question for q in plan.questions if not q.blocking],
     }
+    source = _case_request(plan, case)
+    if source is not None:
+        if source.feed_pressure is not None:
+            spec['feeds'][0]['pressure'] = source.feed_pressure
+            spec['feeds'][0]['pressure_unit'] = source.feed_pressure_unit
+        if source.pressure is not None:
+            feed = spec['feeds'][0]
+            try:
+                reactor['pressure_drop_kPa'] = (
+                    to_kpa(feed['pressure'], feed['pressure_unit'])
+                    - to_kpa(source.pressure, source.pressure_unit))
+            except (ValueError, TypeError) as exc:
+                raise CompileError('工况 %s 的压力或单位无效：%s' % (case.case_id, exc)) from exc
     blocking = [q.question for q in plan.questions if q.blocking and q.is_open()]
     if blocking:
         spec['blocking_questions'] = blocking

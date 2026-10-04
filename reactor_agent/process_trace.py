@@ -10,6 +10,7 @@ from .report import results_view
 
 NODE_TITLES = {
     'intake': '模型抽取输入信息',
+    'review': '第二模型审核原文与抽取结果',
     'plan': '校验、反应器选型与编译预检',
     'ask': '追问与用户确认',
     'execute': '执行 HYSYS 模拟',
@@ -17,6 +18,7 @@ NODE_TITLES = {
 }
 DETAIL_FIELDS = {
     'intake': ('facts', 'extraction_error', 'extraction_attempts', 'ungrounded'),
+    'review': ('review', 'extraction_error', 'ungrounded'),
     'plan': ('decision', 'components', 'thermal_mode', 'assumptions', 'applied',
              'notes', 'cases', 'blocking', 'open_questions', 'problems', 'status'),
     'ask': ('answers', 'resolved_fields', 'clarification_rounds'),
@@ -52,6 +54,8 @@ def stream_graph(graph, inputs, config, observer):
                     status = 'DONE'
                     if node == 'intake' and update.get('extraction_error'):
                         status = 'FAILED'
+                    if node == 'review':
+                        status = update.get('review', {}).get('status', 'DONE')
                     if node == 'plan':
                         status = update.get('status', 'DONE')
                     if node == 'execute':

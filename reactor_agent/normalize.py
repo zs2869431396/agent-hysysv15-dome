@@ -649,6 +649,13 @@ def normalize(facts: dict[str, Any], source_text: str, *,
     straight into a case and produce a confident wrong answer.
     """
     report = NormalizationReport()
+    for item in facts.get('_review_questions') or []:
+        path = {'feed_total': 'feeds[0].total_flow',
+                'feed_temperature': 'feeds[0].temperature',
+                'feed_pressure': 'feeds[0].pressure',
+                'feed_composition': 'feeds[0].fractions'}.get(item['field'], item['field'])
+        report.questions.append(Question(id='q-review:' + item['field'],
+            field=path, blocking=True, question=item['question'], reason=item['reason']))
 
     for field in ungrounded or []:
         # The id carries the field name verbatim after a colon, so `_apply_answers`
@@ -686,6 +693,10 @@ def normalize(facts: dict[str, Any], source_text: str, *,
 
     pressure = facts.get('feed_pressure')
     case_pressures = [p for p in (facts.get('case_pressures') or []) if p is not None]
+    # A zero pressure drop explicitly connects each case's inlet and outlet.
+    per_case_feed = bool(case_pressures and re.search(
+        r'(?<!非)(?<!不)(?:无压降|没有压降)|压降\s*(?:为|=|是)\s*0'
+        r'|no\s+pressure\s+drop|进料和出口压力均为', source_text, re.I))
     if pressure is None and case_pressures:
         # The request stated one pressure per operating case; when every case agrees,
         # that is the same statement as a feed pressure and can be used as one.
@@ -699,7 +710,7 @@ def normalize(facts: dict[str, Any], source_text: str, *,
             pressure_unit = case_unit or pressure_unit
             report.record('feed pressure taken from the per-case pressure (all cases '
                           'state %g %s)' % (float(pressure), pressure_unit))
-        else:
+        elif not per_case_feed:
             report.questions.append(Question(
                 id='q-pressure-varies', field='feeds[0].pressure', blocking=True,
                 question='各工况的压力不同（%s），请确认进料压力按哪一个？'
@@ -766,7 +777,8 @@ def normalize(facts: dict[str, Any], source_text: str, *,
         report.questions.append(Question(
             id='q-feed-temperature', field='feeds[0].temperature', blocking=True,
             question='进料温度是多少？', reason='进料温度是物料与能量衡算的必需条件。'))
-    if pressure is None:
+    if pressure is None and not per_case_feed and not any(
+            q.field == 'feeds[0].pressure' for q in report.questions):
         report.questions.append(Question(
             id='q-feed-pressure', field='feeds[0].pressure', blocking=True,
             question='操作压力是多少？', reason='压力是物料与能量衡算的必需条件。'))
@@ -860,15 +872,29 @@ def normalize(facts: dict[str, Any], source_text: str, *,
     outlet_temperature, _ = _canonical_unit(facts.get('outlet_temperature_unit'),
                                             TEMPERATURE_UNITS, temperature)
     cases: list[OperatingCaseRequest] = []
-    for index, value in enumerate(facts.get('outlet_temperatures') or []):
+    temperatures = facts.get('outlet_temperatures') or []
+    case_pressure_unit = _canonical_unit(facts.get('case_pressure_unit'),
+                                          PRESSURE_UNITS, pressure_unit)[0]
+    if case_pressures and len(case_pressures) not in (1, len(temperatures)):
+        report.questions.append(Question(id='q-review:outlet_temperatures',
+            field='outlet_temperatures', blocking=True,
+            question='请按工况顺序给出每个出口温度的 JSON 列表，相同温度也需重复列出。',
+            reason='工况压力与出口温度的数量不一致，不能猜测对应关系。'))
+    for index, value in enumerate(temperatures):
         if value is None:
             continue
+        case_pressure = pressure
+        if case_pressures and (len(case_pressures) == 1 or index < len(case_pressures)):
+            case_pressure = case_pressures[0 if len(case_pressures) == 1 else index]
         cases.append(OperatingCaseRequest(
             case_id='case-%d' % (index + 1), label='%g %s' % (float(value),
                                                               outlet_temperature),
             outlet_temperature=float(value),
             outlet_temperature_unit=outlet_temperature,
-            pressure=pressure, pressure_unit=pressure_unit,
+            pressure=case_pressure,
+            pressure_unit=case_pressure_unit if case_pressures else pressure_unit,
+            feed_pressure=case_pressure if per_case_feed else None,
+            feed_pressure_unit=case_pressure_unit,
             thermal_mode='isothermal', source_text=source_text[:200]))
 
     composition_basis, fractions = _feed_composition(
@@ -993,4 +1019,13 @@ def normalize(facts: dict[str, Any], source_text: str, *,
 
     for note in facts.get('missing_information') or []:
         report.notes.append('模型指出未提供：%s' % note)
+    # A reviewer question and a missing-field check can describe the same gap.
+    unique = {}
+    for question in report.questions:
+        path = {'feed_total': 'feeds[0].total_flow',
+                'feed_temperature': 'feeds[0].temperature',
+                'feed_pressure': 'feeds[0].pressure',
+                'feed_composition': 'feeds[0].fractions'}.get(question.field, question.field)
+        unique.setdefault(path, question)
+    report.questions = list(unique.values())
     return request, report

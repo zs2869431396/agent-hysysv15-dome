@@ -101,6 +101,7 @@ def main():
     history = st.session_state.conversations[st.session_state.conversation]
     st.title('HYSYS 模拟助手')
     st.caption('描述你的反应体系和工况，我会整理方案、追问缺失信息并生成结果报告。')
+    st.caption('输入先由模型抽取，再由模型独立审核；当前使用同一模型进行两次调用。')
     if not history:
         with st.chat_message('assistant'):
             st.write('你好！请告诉我进料组成、流量、温度、压力以及模拟目标。也可以从下方示例开始。')

@@ -1,7 +1,7 @@
 """The `intake` node: natural language in, checked facts out.
 
-This is the only node that calls the model, and it does one thing: read the request
-and check what it read against the request. Everything downstream is deterministic.
+This is the first model call. A separate review node checks omissions and meaning
+against the original request before deterministic planning.
 
 The node deliberately does not decide anything about reactors or specs. Its output is
 a fact dictionary plus a list of complaints - missing required fields and values that
@@ -23,7 +23,7 @@ def make_intake(client: ChatClient):
     def intake(state: AgentState) -> dict[str, Any]:
         extraction, problems = extract_verified(
             client, state['text'], state.get('kind', 'conversion'),
-            allowed=set(state.get('allowed_ungrounded') or []))
+            allowed=set(state.get('allowed_ungrounded') or []), review=False)
         return {
             'facts': extraction.facts,
             'extraction_error': extraction.error,

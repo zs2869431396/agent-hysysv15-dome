@@ -1,11 +1,19 @@
 # AI 驱动的化工反应器建模
 
-> **2026-10-03 状态**：工具层已通过验收 `20261003-105341-4467d9c9`（`ALL_SCENARIOS_PASS`）；
-> **智能体层已同步**到这个工具层，离线测试全部通过，**端到端真机运行待执行**。
+> **2026-10-04 状态**：工具层已通过验收 `20261003-105341-4467d9c9`（`ALL_SCENARIOS_PASS`）；
+> 用户工作站反馈三个场景均完成 HYSYS 计算，气化报告曾通过保存结果恢复。
+> 新增输入审核和压力对照工况通过离线验证，仍需在线模型及工作站复核。
 > 第一次接触本项目请先读 [docs/REVIEW_BRIEF.md](docs/REVIEW_BRIEF.md)。
 
 自然语言描述 → **自主判断反应器类型并说明理由** → 在 HYSYS 中实际创建并求解 →
 独立校验 → 返回可解释的计算结果。
+
+**2026-10-04 输入流程更新**：默认先调用模型抽取，再用同一模型进行独立审核。
+审核同时读取题目原文和抽取结果，只能根据原文引用修正遗漏或错误，确实缺失或冲突的
+条件会阻塞并追问。页面的完整运行过程会单独显示审核阶段及修正依据。
+正常路径为两次模型请求，刷新页面和回答追问不会重跑这两次调用；失败路径仍受
+`TR_MAX_REQUESTS` 的总预算约束。CLI 和页面默认开启审核；需要对照原流程时可设置
+`TR_REVIEW=0`。详情见 [双阶段输入审核](docs/INPUT_REVIEW.md)。
 
 考核要求见 [题目原文](../AI化工反应器建模实战考核(1).md)。本仓库分两层：
 
@@ -37,7 +45,7 @@ status ALL_SCENARIOS_PASS
 历史验收 `20261002-144131-d442afae`（甲苯 + Gibbs 重整，当时气化被拒绝）见
 `tool-layer-runs/acceptance-20261002-144131-d442afae/`，**只代表历史版本**。
 
-**Agent 层已打通自然语言入口**（离线测试通过；带模型 key 的 dry run 与真机运行待执行）：
+**Agent 层已打通自然语言入口**（下表为方案阶段状态，真机结果另见 [项目报告](docs/PROJECT_REPORT.md)）：
 
 | 场景 | 结果 |
 |---|---|
@@ -45,8 +53,8 @@ status ALL_SCENARIOS_PASS
 | 甲烷蒸汽重整 | `READY` —— Equilibrium（verified），两个工况，案例名 `smr-710C`/`smr-600C`，自定流量甲烷 1000 kmol/h（总 3700 kmol/h，约 128 kt/a） |
 | 水煤浆气化 | 先 `WAITING_INPUT`（两题都带默认答案）；回车采用默认后 `READY` —— Gibbs（verified），spec 含 `flow_input: normal_volume` 与 `solid_carbon: saturation` |
 
-**离线测试全部通过**：工具层 122 项自检 + 184 项回归，Agent 层 373 项，打包器 17 项；
-`scripts\run-all-tests.cmd` **14 个套件**全绿。各套件数量见 `docs/AGENT_FIX_NOTES.md`。
+**离线验证**：本次 Agent 层 484 项回归、打包器 17 项通过；工具层已有 122 项自检和
+184 项回归，验收哈希保持一致。`scripts\run-all-tests.cmd` 可发现并运行全部测试。
 
 ## 目录结构
 
@@ -74,6 +82,7 @@ status ALL_SCENARIOS_PASS
 │   ├── report.py             # 唯一的报告渲染器（图与单遍流程共用）
 │   ├── llm.py                # 模型客户端：降级链、控速、enable_thinking=false
 │   ├── extraction.py         # 模型侧契约 + 防幻觉检查（grounding）
+│   ├── review.py             # 第二次模型审核、原文引用与修正校验
 │   ├── normalize.py          # 确定性归一化：单位、组分名、反应式、工况
 │   ├── pipeline.py           # 单遍流程，含 dry run
 │   ├── graph.py              # LangGraph 主图装配 + 检查点 + 产物输出

@@ -245,6 +245,7 @@ class AcceptedDefaultsEndToEnd(unittest.TestCase):
             'TR_BASE': 'http://%s:%d/v1' % (host, port),
             'TR_MODEL': 'stub-model',
             'TR_GAP': '0',
+            'TR_REVIEW': '0',  # This fixture intentionally exercises extraction only.
         }
 
     def _main(self, argv: list[str]) -> int:

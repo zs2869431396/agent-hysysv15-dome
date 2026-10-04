@@ -44,6 +44,15 @@ def ask_node(state: AgentState) -> Command:
 
     resolved, unresolved, notes = resolve_ungrounded(
         list(state.get('ungrounded') or []), answer if isinstance(answer, dict) else {})
+    from .answers import apply_answers
+    merged = apply_answers(state.get('facts') or {}, answers)
+    reviewed_before = {q['field'] for q in (state.get('facts') or {}).get('_review_questions', [])}
+    reviewed_after = {q['field'] for q in merged.get('_review_questions', [])}
+    confirmed_review = reviewed_before - reviewed_after
+    newly_resolved = [f for f in unresolved if any(
+        f == name or f.startswith(name + '[') for name in confirmed_review)]
+    resolved.extend(newly_resolved)
+    unresolved = [f for f in unresolved if f not in newly_resolved]
 
     return Command(goto='plan', update={
         'answers': answers,

@@ -73,6 +73,7 @@ class AgentRun:
     plan: ModelingPlan | None = None
     executions: list[ExecutionResult] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
+    input_review: dict[str, Any] = field(default_factory=dict)
     explanation: str = ''
     run_root: Path | None = None
     started_at: str = ''
@@ -130,6 +131,7 @@ class AgentRun:
             'assumptions_we_made': self.assumptions_we_made,
             'executions': [e.summary() for e in self.executions],
             'problems': self.problems,
+            'input_review': self.input_review,
             'started_at': self.started_at,
             'finished_at': self.finished_at,
         }
@@ -301,6 +303,7 @@ def run_pipeline(text: str, *, scenario_label: str = '', kind: str = '',
         return _finish(run)
 
     run.problems.extend(problems)
+    run.input_review = extraction.facts.get('_review_record') or {}
     if extraction.error:
         run.status = FAILED
         run.problems.append('extraction failed: %s' % extraction.error)

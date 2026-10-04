@@ -121,7 +121,9 @@ class Settings:
 
     def config(self) -> LlmConfig:
         resolved = self.resolve()
-        return LlmConfig(base=resolved.base, model=resolved.model, key=resolved.key)
+        config = LlmConfig.from_env(resolved.env)
+        config.base, config.model, config.key = resolved.base, resolved.model, resolved.key
+        return config
 
 
 @dataclass

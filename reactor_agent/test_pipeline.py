@@ -79,7 +79,7 @@ def client_returning(facts: dict, repeats: int = 8) -> ChatClient:
                                     'message': {'content': json.dumps(facts)}}],
                        'usage': {}})
     queue = [(200, body)] * repeats
-    config = LlmConfig(base='https://example.test/v1', key='sk-' + 'p' * 30,
+    config = LlmConfig(review=False, base='https://example.test/v1', key='sk-' + 'p' * 30,
                        min_interval=0)
 
     def transport(url, payload, headers, timeout):
@@ -333,7 +333,7 @@ class ModelFailure(unittest.TestCase):
         self.assertIn('no model client', run.problems[0])
 
     def test_an_unparseable_model_reply_fails_rather_than_guesses(self):
-        config = LlmConfig(base='https://example.test/v1', key='sk-' + 'q' * 30,
+        config = LlmConfig(review=False, base='https://example.test/v1', key='sk-' + 'q' * 30,
                            min_interval=0)
         queue = [(200, json.dumps({'choices': [{'message': {'content': 'nope'}}]}))] * 8
 

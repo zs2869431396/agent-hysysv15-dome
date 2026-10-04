@@ -116,6 +116,7 @@ class LlmConfig:
     attempts: int = DEFAULT_ATTEMPTS
     # Thinking is off by default for the reason in the module docstring.
     enable_thinking: bool = False
+    review: bool = True
     # How the reply's shape is constrained. `json_schema` is OpenAI's Structured
     # Outputs extension: a compatible gateway may accept it and ignore it, or answer
     # `HTTP 400`. `json_object` is the widely supported subset (some vendors require
@@ -148,6 +149,7 @@ class LlmConfig:
                              else RESPONSE_FORMAT_JSON_OBJECT),
             max_requests=int(env.get('TR_MAX_REQUESTS', DEFAULT_MAX_REQUESTS)),
             transcript=str(env.get('TR_TRANSCRIPT', '') or ''),
+            review=str(env.get('TR_REVIEW', '1')).strip().casefold() not in ('0', 'false', 'off'),
         )
 
     def require_key(self) -> None:

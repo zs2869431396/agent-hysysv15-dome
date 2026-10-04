@@ -51,7 +51,7 @@ def reply(content: str) -> str:
 
 
 def fake_client(bodies):
-    config = LlmConfig(base='https://example.test/v1', key='sk-' + 't' * 30,
+    config = LlmConfig(review=False, base='https://example.test/v1', key='sk-' + 't' * 30,
                        min_interval=0)
     queue = [(200, reply(body)) for body in bodies]
 
@@ -67,7 +67,7 @@ def counting_client(bodies, statuses=None):
     `statuses` injects raw `(status, body)` replies instead of 200-plus-JSON ones, which
     is how the HTTP failure paths are exercised.
     """
-    config = LlmConfig(base='https://example.test/v1', key='sk-' + 't' * 30,
+    config = LlmConfig(review=False, base='https://example.test/v1', key='sk-' + 't' * 30,
                        min_interval=0)
     queue = ([(status, body) for status, body in statuses] if statuses
              else [(200, reply(body)) for body in bodies])

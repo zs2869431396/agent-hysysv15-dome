@@ -62,7 +62,7 @@ def client_returning(*fact_sets: dict) -> ChatClient:
             'choices': [{'finish_reason': 'stop',
                          'message': {'content': json.dumps(facts)}}],
             'usage': {}})))
-    config = LlmConfig(base='https://example.test/v1', key='sk-' + 'g' * 30,
+    config = LlmConfig(review=False, base='https://example.test/v1', key='sk-' + 'g' * 30,
                        min_interval=0)
 
     def transport(url, payload, headers, timeout):

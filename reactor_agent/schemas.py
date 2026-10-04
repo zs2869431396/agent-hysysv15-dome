@@ -227,6 +227,8 @@ class OperatingCaseRequest(Strict):
     outlet_temperature_unit: str = 'C'
     pressure: float | None = None
     pressure_unit: str = 'kPa'
+    feed_pressure: float | None = None
+    feed_pressure_unit: str = 'kPa'
     thermal_mode: Literal['adiabatic', 'isothermal'] | None = None
     source_text: str = ''
 

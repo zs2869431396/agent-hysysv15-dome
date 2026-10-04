@@ -356,6 +356,29 @@ def apply_answers(facts: dict[str, Any], answers: dict[str, Any],
             note.append('%s: %s' % (question_id, outcome['note']))
 
     for question_id, answer in (answers or {}).items():
+        if question_id.startswith('q-review:'):
+            from ..extraction import EXTRACTION_SCHEMA, validate_facts
+            from ..review import valid_value
+            field = question_id.split(':', 1)[1]
+            spec = EXTRACTION_SCHEMA['properties'].get(field)
+            if spec is None:
+                continue
+            value = answer
+            if 'number' in spec.get('type', ()):
+                value, unit = parse_answer_value(answer)
+                if value is not None and unit and field in _UNIT_FIELDS:
+                    merged[_UNIT_FIELDS[field]] = unit
+            elif spec.get('type') in ('array', 'object') and isinstance(answer, str):
+                try:
+                    value = json.loads(answer)
+                except ValueError:
+                    continue
+            if value is None or not valid_value(value, spec) or validate_facts({field: value}):
+                continue
+            merged[field] = value
+            merged['_review_questions'] = [q for q in merged.get('_review_questions', [])
+                                           if q['field'] != field]
+            continue
         if question_id == 'q-feed-composition' or question_id.startswith('q-composition-species-'):
             if isinstance(answer, str):
                 try:

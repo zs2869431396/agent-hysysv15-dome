@@ -26,7 +26,7 @@ class ChatTests(unittest.TestCase):
             self.calls.append(args)
             return 200, json.dumps({'choices': [{'finish_reason': 'stop',
                 'message': {'content': json.dumps(self.facts)}}]})
-        client = ChatClient(LlmConfig(base='https://example.test/v1',
+        client = ChatClient(LlmConfig(review=False, base='https://example.test/v1',
             key='offline-secret-for-tests-only', min_interval=0), transport=transport, sleeper=lambda _: None)
         self.patcher = patch.object(SessionApp, 'client', return_value=client)
         self.patcher.start()

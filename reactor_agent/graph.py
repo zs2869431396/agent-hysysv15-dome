@@ -6,7 +6,7 @@ without redoing anything - which is what the exam's scenarios need, because one 
 them is genuinely under-specified and waiting for an answer is the correct behaviour,
 not a failure.
 
-    START -> intake -> plan -+-> ask (interrupt) -> plan -> execute -> explain -> END
+    START -> intake -> review -> plan -+-> ask (interrupt) -> plan -> execute -> explain -> END
                              +-> execute -> explain -> END
                              +-> explain -> END
 
@@ -33,6 +33,7 @@ from langgraph.graph import END, START, StateGraph
 
 from .adapters.hysys_cli import HysysCliAdapter
 from .llm import ChatClient
+from .review import make_review
 from .nodes import (
     AgentState,
     apply_answers,
@@ -66,6 +67,7 @@ def build_graph(client: ChatClient, *, adapter: HysysCliAdapter | None = None,
     """Assemble the graph. `checkpointer=None` keeps state in memory."""
     graph = StateGraph(AgentState)
     graph.add_node('intake', make_intake(client))
+    graph.add_node('review', make_review(client))
     graph.add_node('plan', make_plan_node())
     graph.add_node('ask', ask_node)
     graph.add_node('execute', make_execute_node(adapter,
@@ -77,7 +79,8 @@ def build_graph(client: ChatClient, *, adapter: HysysCliAdapter | None = None,
     # `intake` always hands over to `plan`. Questions are produced by normalisation,
     # which lives in `plan`, so routing to `ask` any earlier would mean asking about
     # something `plan` was about to resolve on its own.
-    graph.add_edge('intake', 'plan')
+    graph.add_edge('intake', 'review')
+    graph.add_edge('review', 'plan')
     graph.add_conditional_edges(
         'plan', route_after_plan,
         {'ask': 'ask', 'execute': 'execute', 'explain': 'explain'})

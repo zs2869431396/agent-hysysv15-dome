@@ -36,6 +36,7 @@ class AgentState(TypedDict, total=False):
     facts: dict[str, Any]
     extraction_error: str | None
     extraction_attempts: int
+    review: dict[str, Any]
     ungrounded: Annotated[list[str], _replace]
 
     answers: dict[str, Any]
@@ -96,5 +97,6 @@ def state_summary(state: AgentState) -> dict[str, Any]:
             if a.get('source') == 'agent_default'],
         'executions': state.get('executions') or [],
         'problems': state.get('problems') or [],
+        'input_review': state.get('review') or {},
         'applied': state.get('applied') or [],
     }

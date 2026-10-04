@@ -1,5 +1,9 @@
 # 文档导航
 
+- [项目报告](PROJECT_REPORT.md)：用于提交的项目说明，包含工作站反馈与验证边界。
+- [视频逐字稿](VIDEO_SCRIPT.md)：三个场景的口述内容与录屏操作提示。
+- [双阶段输入审核](INPUT_REVIEW.md)：模型审核、追问恢复和多工况压力的处理。
+
 - [远程验收](REMOTE_VALIDATION.md)：工作站运行步骤与结果判读。
 - [工具接口](TOOL_REFERENCE.md)：HYSYS 工具层的数据接口。
 - [Equilibrium 与饱和碳路线](EQUILIBRIUM_INTEGRATION.md)：反应器接入说明。
