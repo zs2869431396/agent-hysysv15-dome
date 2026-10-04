@@ -16,6 +16,44 @@ PATHS = {'feeds[0].total_flow': GROUPS[0], 'feeds[0].pressure': GROUPS[1],
 CONFIRMATIONS = {'q-coal-definition', 'q-volumetric-flow'}
 
 
+def recover_explicit_inputs(text, facts):
+    """Recover literal units and an unambiguous feed composition basis.
+
+    Composition basis is independent of total-flow units. Only a literal feed
+    composition label can override extraction; product splits and conflicting
+    feed labels cannot choose a basis for the user.
+    """
+    import re
+    repaired, records = recover_explicit_units(text, facts)
+    candidates = []
+    pattern = re.compile(
+        r'(?P<mole>摩尔\s*(?:组成|分数|百分比|百分数|比)|'
+        r'(?:mole|molar)\s+(?:composition|fractions?|percent(?:age)?s?|ratio))|'
+        r'(?P<mass>质量\s*(?:组成|分数|百分比|百分数|比)|'
+        r'(?:mass|weight)\s+(?:composition|fractions?|percent(?:age)?s?|ratio))', re.I)
+    for match in pattern.finditer(text):
+        # Scope the label to the last named stream. A product's molar split
+        # must not overwrite a feed's mass composition.
+        preceding = text[:match.start()]
+        streams = list(re.finditer(r'进料|原料|出口|产物|产品|\bfeed\b|\boutlet\b|\bproducts?\b',
+                                   preceding, re.I))
+        if not streams or not re.fullmatch(r'进料|原料|feed', streams[-1].group(), re.I):
+            continue
+        candidates.append(('molar_fraction' if match.group('mole') else 'mass_fraction',
+                           match.group()))
+    bases = {basis for basis, _ in candidates}
+    if len(bases) == 1:
+        basis, evidence = candidates[0]
+        from .normalize import COMPOSITION_BASES
+        previous = repaired.get('composition_basis')
+        if COMPOSITION_BASES.get(str(previous or '').strip().casefold()) != basis:
+            repaired['composition_basis'] = basis
+            records.append({'field': 'composition_basis', 'value': basis,
+                            'original_value': previous, 'evidence': evidence,
+                            'reason': '原文明示唯一的进料组成基准；不从总流量单位推断。'})
+    return repaired, records
+
+
 def recover_explicit_units(text, facts):
     """Fill absent units from a matching, labelled literal in the source only."""
     import re
@@ -75,7 +113,7 @@ def precheck_inputs(text, facts, context=None):
 
 def recover_inputs(client, text, facts, *, context=None):
     from .review import _review_reply, valid_value
-    original, source_recoveries = recover_explicit_units(text, facts)
+    original, source_recoveries = recover_explicit_inputs(text, facts)
     original.pop('_review_questions', None)  # Model-authored questions never govern planning.
     before, targets = precheck_inputs(text, original, context)
     record = {'status': 'SKIPPED', 'mode': 'targeted_recovery', 'target_fields': targets,
@@ -129,7 +167,7 @@ def recover_inputs(client, text, facts, *, context=None):
                 accepted.append(patch)
         if reason:
             rejected.append({**patch, 'reason': reason})
-    candidate, later_units = recover_explicit_units(text, candidate)
+    candidate, later_units = recover_explicit_inputs(text, candidate)
     record['source_recoveries'].extend(later_units)
     # Numeric values are validated with their final associated units. A rejected
     # value/unit/basis group rolls back atomically; no model may reinterpret a number.

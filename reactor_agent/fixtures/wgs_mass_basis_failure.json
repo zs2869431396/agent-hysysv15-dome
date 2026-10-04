@@ -1,0 +1,81 @@
+{
+  "source": "User-provided failed state (1).json and request, 2026-10-04; raw model facts preserved.",
+  "text": "模拟气相水煤气变换：CO + H2O ⇌ CO2 + H2。\n进料总流量1000 kmol/h，摩尔组成为CO 40%、水蒸气60%。进料温度300℃，进料和出口压力均为10 bar，无压降。没有动力学参数，也不指定转化率。候选组分仅包含CO、H2O、CO2和H2。\n分别计算出口温度350℃和500℃的等温平衡工况。比较CO转化率、氢气摩尔流量、出口组成和外部热负荷，并检查反应平衡关系、元素守恒和质量守恒。",
+  "facts": {
+    "species": [
+      "CO",
+      "H2O",
+      "CO2",
+      "H2"
+    ],
+    "feed_composition": [
+      {
+        "name": "CO",
+        "fraction": 40
+      },
+      {
+        "name": "水蒸气",
+        "fraction": 60
+      }
+    ],
+    "composition_basis": "mass_fraction",
+    "reactions": [
+      {
+        "name": "水煤气变换",
+        "species": [
+          {
+            "name": "CO",
+            "coefficient": -1
+          },
+          {
+            "name": "H2O",
+            "coefficient": -1
+          },
+          {
+            "name": "CO2",
+            "coefficient": 1
+          },
+          {
+            "name": "H2",
+            "coefficient": 1
+          }
+        ],
+        "reversible": true
+      }
+    ],
+    "conversion_percent": null,
+    "conversion_basis": null,
+    "rate_law": null,
+    "pre_exponential": null,
+    "activation_energy": null,
+    "activation_energy_unit": null,
+    "reaction_order": [],
+    "reactor_volume": null,
+    "reactor_volume_unit": null,
+    "residence_time": null,
+    "residence_time_unit": null,
+    "catalyst_mass": null,
+    "catalyst_mass_unit": null,
+    "phase": "gas",
+    "feed_total": 1000,
+    "feed_unit": "kmol/h",
+    "feed_temperature": 300,
+    "feed_temperature_unit": "℃",
+    "feed_pressure": 10,
+    "feed_pressure_unit": "bar",
+    "case_pressures": [
+      10,
+      10
+    ],
+    "case_pressure_unit": "bar",
+    "outlet_temperatures": [
+      350,
+      500
+    ],
+    "outlet_temperature_unit": "℃",
+    "missing_information": []
+  },
+  "original_problems": [
+    "compilation failed: compiled spec for case 'case-1' failed the pre-check: feeds[0] cannot be converted to molar flows: total_flow_unit 'kmol/h' is neither molar nor mass (molar: ['kgmol/h', 'kgmole/h', 'kmol/h', 'kmol/hr', 'mol/h']; mass: ['kg/h', 'kg/hr', 'kgh', 't/h', 'ton/h']). Volumetric units such as Nm3/h need flow_input=normal_volume with the standard conditions stated, and a feed whose total is delegated to HYSYS cannot be known offline."
+  ]
+}

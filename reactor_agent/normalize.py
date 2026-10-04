@@ -654,10 +654,10 @@ def normalize(facts: dict[str, Any], source_text: str, *,
     straight into a case and produce a confident wrong answer.
     """
     report = NormalizationReport()
-    from .input_recovery import recover_explicit_units
-    facts, unit_records = recover_explicit_units(source_text, facts)
+    from .input_recovery import recover_explicit_inputs
+    facts, unit_records = recover_explicit_inputs(source_text, facts)
     for item in unit_records:
-        report.record('unit recovered from the original request: %s = %s' % (item['field'], item['value']))
+        report.record('input recovered from the original request: %s = %s' % (item['field'], item['value']))
     for item in facts.get('_review_questions') or []:
         path = {'feed_total': 'feeds[0].total_flow',
                 'feed_temperature': 'feeds[0].temperature',
