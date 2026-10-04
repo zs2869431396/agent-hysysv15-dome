@@ -1,0 +1,21 @@
+{
+  "provenance": "用户粘贴的 19:37 气化审核 format_attempts[0].reply；相关原抽取值从该次页面及此前 process.json 核对，未获取该次完整首次模型回复。",
+  "corrections": [
+    {"field":"species","value_json":"[\"碳\", \"水\", \"一氧化碳\", \"氢气\"]","evidence":"进料为煤炭和水...主要反应：C+H2O → CO+H2"},
+    {"field":"feed_composition","value_json":"[{\"name\": \"煤炭\", \"fraction\": 62}, {\"name\": \"水\", \"fraction\": 38}]","evidence":"水煤浆进料浓度62wt%"},
+    {"field":"composition_basis","value_json":"\"mass_fraction\"","evidence":"62wt%"},
+    {"field":"reactions","value_json":"[{\"name\": \"气化反应\", \"species\": [{\"name\": \"碳\", \"coefficient\": -1}, {\"name\": \"水\", \"coefficient\": -1}, {\"name\": \"一氧化碳\", \"coefficient\": 1}, {\"name\": \"氢气\", \"coefficient\": 1}], \"reversible\": false}]","evidence":"主要反应：C+H2O → CO+H2"},
+    {"field":"feed_total","value_json":"80000","evidence":"流量80000Nm3/h"},
+    {"field":"feed_unit","value_json":"\"Nm3/h\"","evidence":"流量80000Nm3/h"},
+    {"field":"feed_temperature","value_json":"40","evidence":"进料温度40摄氏度"},
+    {"field":"feed_temperature_unit","value_json":"\"摄氏度\"","evidence":"进料温度40摄氏度"},
+    {"field":"feed_pressure","value_json":"40","evidence":"压力40bar"},
+    {"field":"feed_pressure_unit","value_json":"\"bar\"","evidence":"压力40bar"},
+    {"field":"outlet_temperatures","value_json":"[1400]","evidence":"出口温度为1400度"},
+    {"field":"outlet_temperature_unit","value_json":"\"度\"","evidence":"出口温度为1400度"}
+  ],
+  "questions": [
+    {"field":"missing_information","question":"原文中提到的“流量80000Nm3/h”用于描述“水煤浆”（固体/液体混合物）是否准确？通常Nm3/h用于气体，请确认该流量的实际物理意义或基准。","reason":"原文将体积流量单位Nm3/h应用于非气相进料（水煤浆），存在单位与物态不匹配的潜在冲突，需用户澄清。"},
+    {"field":"missing_information","question":"原文提到“反应器灰分不做考虑”，这是否意味着在计算中忽略灰分的质量或摩尔贡献，还是指不考虑灰分对反应的影响？请明确灰分在物料平衡中的处理方式。","reason":"原文表述模糊，需确认灰分在组分列表和总流量计算中的具体处理逻辑。"}
+  ]
+}

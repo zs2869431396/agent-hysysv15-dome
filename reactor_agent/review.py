@@ -6,7 +6,7 @@ import json
 import math
 import re
 
-from .extraction import EXTRACTION_SCHEMA, grounding_failures, validate_facts
+from .extraction import EXTRACTION_SCHEMA, grounding_failures, validate_facts, written_equations
 from .llm import LlmError
 
 
@@ -64,6 +64,7 @@ HYSYS 提供物性、比热和反应热；Conversion 和平衡计算不要求催
 "questions":[{"field":"需确认的契约字段名", "question":"具体问题",
 "reason":"缺失或冲突的原因"}]}
 无修改或问题时返回空数组。每个修正必须附原文依据；不要复制原文中没有的示例值。
+只把真正改变原值的字段放入 corrections，不要重复列出原本正确的值。
 审核问题必须能通过用户填写该字段来解决，不询问题目已经明确说明的信息。
 首次抽取字段契约如下：
 '''+json.dumps(EXTRACTION_SCHEMA, ensure_ascii=False)
@@ -131,6 +132,23 @@ def _review_reply(client, text, facts):
     raise AssertionError('unreachable')
 
 
+def _equation_species_proof(text, facts):
+    """Prove the original list equals the species in the user's written equations.
+
+    Identity only: mapping coal/carbon here never confirms the coal modelling
+    assumption, which remains the compiler's independent blocking question.
+    """
+    from .normalize import resolve_species
+    equations = written_equations(text)
+    original = facts.get('species')
+    if not equations or not isinstance(original, list) or not original:
+        return False
+    formulas = {formula for equation in equations for formula in equation}
+    required = {resolve_species(formula) for formula in formulas}
+    extracted = {resolve_species(name) for name in original}
+    return None not in required | extracted and required == extracted
+
+
 def _source_resolutions(text, facts):
     """Narrow, deterministic proofs which can discharge a rejected model edit.
 
@@ -139,6 +157,9 @@ def _source_resolutions(text, facts):
     """
     from .normalize import normalize, stated_pure_feed, stated_xylene_isomers
     resolved = {}
+    if _equation_species_proof(text, facts):
+        resolved['species'] = (copy.deepcopy(facts['species']),
+            '原抽取组分与原文反应式的全部物质一致；煤的建模定义仍由独立追问确认。')
     pure = stated_pure_feed(text)
     if pure:
         resolved['feed_composition'] = ([{'name': pure, 'fraction': 1.0}], '原文明示纯组分进料。')
@@ -179,14 +200,12 @@ def review_facts(client, text, facts):
     seen = set()
     fields = EXTRACTION_SCHEMA['properties']
     rejected = []
+    unchanged = []
     for patch in reply['corrections']:
         name, quote = patch['field'], patch['evidence']
         if name not in fields or name in seen:
             raise LlmError('审核修正字段无效或重复：%s' % name, kind='bad_json')
         seen.add(name)
-        if not quote.strip() or quote not in text:
-            rejected.append({**patch, 'reason': '审核修正没有提供可逐字核对的原文依据。'})
-            continue
         try:
             value = json.loads(patch['value_json'])
         except (TypeError, ValueError):
@@ -196,11 +215,19 @@ def review_facts(client, text, facts):
         if errors or not valid_value(value, fields[name]):
             rejected.append({**patch, 'reason': '审核修正值的类型或结构无效。'})
             continue
+        if name in facts and value == facts[name]:
+            # No edit occurred. Rejecting a paraphrase cannot make the original
+            # input ambiguous; all original facts still undergo normal pre-checks.
+            unchanged.append(patch)
+            continue
+        if not quote.strip() or quote not in text:
+            rejected.append({**patch, 'reason': '审核修正没有提供可逐字核对的原文依据。'})
+            continue
         reviewed[name] = value
     # Check each changed numeric field against its own quote using the final unit.
     for patch in reply['corrections']:
         name = patch['field']
-        if any(item['field'] == name for item in rejected):
+        if any(item['field'] == name for item in rejected + unchanged):
             continue
         failures = grounding_failures(reviewed, patch['evidence'])
         if any(f == name or f.startswith(name + '[') for f in failures):
@@ -227,9 +254,15 @@ def review_facts(client, text, facts):
         else:
             reviewed.pop(name, None)
     for patch in reply['corrections']:
-        if patch['field'] in rollback and patch['field'] not in rejected_fields:
+        if (patch['field'] in rollback and patch['field'] not in rejected_fields
+                and patch not in unchanged):
             rejected.append({**patch, 'reason': '关联数值、单位或组成基准的修正未通过，已一并保留原值。'})
     resolutions = _source_resolutions(text, facts)
+    # An accepted edit may legitimately add a separately stated inert/candidate
+    # component. Do not replace it with a proof about the original equation list.
+    if ('species' in seen and 'species' not in rollback
+            and not any(p['field'] == 'species' for p in unchanged)):
+        resolutions.pop('species', None)
     for name, (value, _reason) in resolutions.items():
         reviewed[name] = copy.deepcopy(value)
     questions = {q['field']: copy.deepcopy(q) for q in reply['questions']
@@ -249,10 +282,11 @@ def review_facts(client, text, facts):
         questions[target] = {'field': target, 'question': question,
             'reason': item['reason'] + '该修正未采用，确认前不会执行 HYSYS。'}
     reviewed['_review_questions'] = list(questions.values())
-    applied = [p for p in reply['corrections'] if p['field'] not in rollback]
+    applied = [p for p in reply['corrections'] if p['field'] not in rollback and p not in unchanged]
     return reviewed, {'status': 'WAITING_INPUT' if questions else 'PASS',
         'corrections': [p for p in applied if p['field'] not in resolutions],
         'rejected_corrections': rejected, 'questions': list(questions.values()),
+        'unchanged_corrections': unchanged,
         'format_attempts': format_attempts,
         'deterministic_resolutions': [{'field': name, 'value': value, 'reason': reason}
                                      for name, (value, reason) in resolutions.items()]}

@@ -39,6 +39,8 @@ LIVE_REVIEW = json.loads((Path(__file__).parent / 'fixtures' /
                          'toluene_review_failure.json').read_text(encoding='utf-8'))
 LIVE_GASIFICATION = json.loads((Path(__file__).parent / 'fixtures' /
                          'gasification_review_input.json').read_text(encoding='utf-8'))
+GASIFICATION_NOOP = json.loads((Path(__file__).parent / 'fixtures' /
+                         'gasification_review_noop.json').read_text(encoding='utf-8'))
 
 
 def live_toluene_facts():
@@ -72,6 +74,89 @@ def model_client(facts, review, **config):
 
 
 class ReviewTests(unittest.TestCase):
+    def test_real_gasification_review_with_unchanged_species_only_asks_two_questions(self):
+        reply = {name: GASIFICATION_NOOP[name] for name in ('corrections', 'questions')}
+        client, calls = model_client(LIVE_GASIFICATION['facts'], reply)
+        graph = build_graph(client)
+        config = {'configurable': {'thread_id': 'real-gasification-noop'}}
+        state = graph.invoke(initial_state(LIVE_GASIFICATION['text']), config)
+        self.assertEqual(state['status'], 'WAITING_INPUT')
+        self.assertEqual({q['id'] for q in state['blocking']}, {'q-volumetric-flow', 'q-coal-definition'})
+        self.assertEqual(state['review']['status'], 'PASS')
+        self.assertEqual(state['review']['rejected_corrections'], [])
+        self.assertTrue(any(p['field'] == 'species' for p in state['review']['unchanged_corrections']))
+        state = graph.invoke(Command(resume={q['id']: q['default'] for q in state['blocking']}), config)
+        self.assertEqual(state['status'], 'READY', state.get('blocking'))
+        self.assertEqual(len(calls), 2)
+
+    def test_unchanged_values_need_no_edit_evidence_but_still_pass_prechecks(self):
+        facts = dict(TOLUENE_FACTS, feed_total=12345)
+        client, _ = model_client(facts, {'corrections': [
+            patch_field('feed_total', 12345, '与原值相同，并不是原文引用')], 'questions': []})
+        state = build_graph(client).invoke(initial_state(TOLUENE_TEXT),
+            {'configurable': {'thread_id': 'ungrounded-noop'}})
+        self.assertEqual(state['status'], 'WAITING_INPUT')
+        self.assertEqual([q['id'] for q in state['blocking']], ['q-ungrounded:feed_total'])
+        self.assertFalse(state['cases'])
+
+    def test_unchanged_null_and_empty_arrays_do_not_trigger_review_questions(self):
+        client, _ = model_client(dict(TOLUENE_FACTS, rate_law=None), {'corrections': [
+            patch_field('rate_law', None, '没有动力学参数...保持原值'),
+            patch_field('outlet_temperatures', [], '没有出口设定温度...保持原值')], 'questions': []})
+        state = build_graph(client).invoke(initial_state(TOLUENE_TEXT),
+            {'configurable': {'thread_id': 'null-empty-noop'}})
+        self.assertEqual(state['status'], 'READY', state.get('blocking'))
+        self.assertEqual(len(state['review']['unchanged_corrections']), 2)
+
+    def test_rejected_species_edit_does_not_reask_equation_species(self):
+        # Synthetic rejected review; real input was supplied by the workstation.
+        review = {'corrections': [patch_field('species',
+            ['碳', '水', '一氧化碳', '氢气', '二氧化碳', '甲烷'], '推导的候选产物，不是逐字引用')],
+            'questions': []}
+        client, calls = model_client(LIVE_GASIFICATION['facts'], review)
+        graph = build_graph(client)
+        config = {'configurable': {'thread_id': 'species-from-equation'}}
+        state = graph.invoke(initial_state(LIVE_GASIFICATION['text']), config)
+        self.assertEqual(state['status'], 'WAITING_INPUT')
+        self.assertEqual({q['id'] for q in state['blocking']}, {'q-volumetric-flow', 'q-coal-definition'})
+        self.assertEqual(state['facts']['species'], LIVE_GASIFICATION['facts']['species'])
+        self.assertEqual(state['review']['rejected_corrections'][0]['field'], 'species')
+        self.assertTrue(any(p['field'] == 'species' for p in state['review']['deterministic_resolutions']))
+        state = graph.invoke(Command(resume={q['id']: q['default'] for q in state['blocking']}), config)
+        self.assertEqual(state['status'], 'READY', state.get('blocking'))
+        self.assertEqual(state['cases'][0]['spec']['reactor']['solid_carbon'], 'saturation')
+        self.assertEqual(len(calls), 2)
+
+    def test_reviewer_question_for_complete_equation_species_is_discharged(self):
+        client, _ = model_client(LIVE_GASIFICATION['facts'], {'corrections': [
+            patch_field('species', LIVE_GASIFICATION['facts']['species'], '重复原值...不是修改')],
+            'questions': [{'field': 'species', 'question': '请确认组分。', 'reason': '模型不确定。'}]})
+        state = build_graph(client).invoke(initial_state(LIVE_GASIFICATION['text']),
+            {'configurable': {'thread_id': 'equation-species-question'}})
+        self.assertEqual({q['id'] for q in state['blocking']}, {'q-volumetric-flow', 'q-coal-definition'})
+
+    def test_missing_unknown_or_extra_species_cannot_use_equation_proof(self):
+        for species in (['碳', '水', '一氧化碳'], ['碳', '水', '一氧化碳', '氢气', '氧气'],
+                        ['碳', '水', '一氧化碳', '未知组分']):
+            with self.subTest(species=species):
+                facts = dict(LIVE_GASIFICATION['facts'], species=species)
+                client, _ = model_client(facts, {'corrections': [
+                    patch_field('species', LIVE_GASIFICATION['facts']['species'], '无依据的说明')], 'questions': []})
+                state = build_graph(client).invoke(initial_state(LIVE_GASIFICATION['text']),
+                    {'configurable': {'thread_id': 'unproved-species'}})
+                self.assertTrue(any(q['id'] == 'q-review:species' for q in state['blocking']))
+                self.assertFalse(state['cases'])
+
+    def test_valid_quoted_species_edit_can_add_stated_inert(self):
+        text = LIVE_GASIFICATION['text'] + '。候选组分还包括氮气。'
+        value = LIVE_GASIFICATION['facts']['species'] + ['氮气']
+        client, _ = model_client(LIVE_GASIFICATION['facts'], {'corrections': [
+            patch_field('species', value, '候选组分还包括氮气')], 'questions': []})
+        state = build_graph(client).invoke(initial_state(text),
+            {'configurable': {'thread_id': 'valid-species-addition'}})
+        self.assertEqual(state['facts']['species'], value)
+        self.assertEqual(state['review']['corrections'][0]['field'], 'species')
+
     def test_nested_format_errors_have_specific_paths(self):
         replies = [
             ({'corrections': [], 'questions': [{'field': 'feed_total', 'question': 'q'}]},
@@ -320,7 +405,7 @@ class ReviewTests(unittest.TestCase):
     def test_invalid_reviewer_reply_never_executes(self):
         replies = [
             {'corrections': [patch_field('feed_total', 12345, '进料流量10000kg/h')], 'questions': []},
-            {'corrections': [patch_field('feed_total', 10000, '不存在的句子')], 'questions': []},
+            {'corrections': [patch_field('feed_total', 10001, '不存在的句子')], 'questions': []},
             {'corrections': [patch_field('reactor_type', 'gibbs', '甲苯')], 'questions': []},
             {'corrections': [{'field': 5, 'value_json': '1', 'evidence': '甲苯'}], 'questions': []},
             {'corrections': [patch_field('feed_composition', ['bad'], '甲苯')], 'questions': []},
