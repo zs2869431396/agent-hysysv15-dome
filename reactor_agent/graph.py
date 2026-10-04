@@ -76,9 +76,9 @@ def build_graph(client: ChatClient, *, adapter: HysysCliAdapter | None = None,
     graph.add_node('explain', explain_node)
 
     graph.add_edge(START, 'intake')
-    # `intake` always hands over to `plan`. Questions are produced by normalisation,
-    # which lives in `plan`, so routing to `ask` any earlier would mean asking about
-    # something `plan` was about to resolve on its own.
+    # `review` first runs the same deterministic pre-check as `plan`, then calls
+    # the recovery model only for data gaps. The final plan owns every question;
+    # the review model never routes the graph or executes HYSYS.
     graph.add_edge('intake', 'review')
     graph.add_edge('review', 'plan')
     graph.add_conditional_edges(

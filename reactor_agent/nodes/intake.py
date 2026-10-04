@@ -1,7 +1,7 @@
 """The `intake` node: natural language in, checked facts out.
 
-This is the first model call. A separate review node checks omissions and meaning
-against the original request before deterministic planning.
+This is the first model call. The recovery node runs deterministic pre-checks
+and only calls a model if a specific input gap remains.
 
 The node deliberately does not decide anything about reactors or specs. Its output is
 a fact dictionary plus a list of complaints - missing required fields and values that

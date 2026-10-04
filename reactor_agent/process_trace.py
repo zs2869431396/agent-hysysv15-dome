@@ -10,7 +10,7 @@ from .report import results_view
 
 NODE_TITLES = {
     'intake': '模型抽取输入信息',
-    'review': '第二模型审核原文与抽取结果',
+    'review': '预检缺口与模型定向补漏',
     'plan': '校验、反应器选型与编译预检',
     'ask': '追问与用户确认',
     'execute': '执行 HYSYS 模拟',

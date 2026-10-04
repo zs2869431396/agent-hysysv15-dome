@@ -1,0 +1,18 @@
+{
+  "provenance": "用户粘贴的 19:46 气化审核 format_attempts[0].reply。首次回复仅知道相关字段，不声称拥有该次完整首次抽取。",
+  "corrections": [
+    {"field":"species","value_json":"[\"煤炭\", \"水\"]","evidence":"进料为煤炭和水"},
+    {"field":"feed_composition","value_json":"[{\"name\": \"煤炭\", \"fraction\": 62}, {\"name\": \"水\", \"fraction\": 38}]","evidence":"水煤浆进料浓度62wt%"},
+    {"field":"composition_basis","value_json":"\"mass_fraction\"","evidence":"62wt%"},
+    {"field":"reactions","value_json":"[{\"name\": \"C+H2O → CO+H2\", \"species\": [{\"name\": \"C\", \"coefficient\": -1}, {\"name\": \"H2O\", \"coefficient\": -1}, {\"name\": \"CO\", \"coefficient\": 1}, {\"name\": \"H2\", \"coefficient\": 1}], \"reversible\": false}]","evidence":"主要反应：C+H2O → CO+H2"},
+    {"field":"feed_total","value_json":"null","evidence":"流量80000Nm3/h"},
+    {"field":"feed_unit","value_json":"null","evidence":"流量80000Nm3/h"},
+    {"field":"phase","value_json":"null","evidence":"我要模拟水煤浆的气化过程"},
+    {"field":"outlet_temperature_unit","value_json":"\"摄氏度\"","evidence":"出口温度为1400度"},
+    {"field":"missing_information","value_json":"[]","evidence":"原文授权自定流量时，不把空流量当作阻塞问题。反应器选择、热边界默认、煤按纯碳确认和标准体积基准由下游规则层处理"}
+  ],
+  "questions": [
+    {"field":"conversion_percent","question":"请提供反应转化率或平衡条件吗？","reason":"原文未明确给出转化率或平衡条件，仅要求计算结果，需确认是否使用平衡计算或指定转化率。"},
+    {"field":"feed_pressure","question":"请确认进料压力单位是否为 bar？","reason":"原文给出压力40bar，首次抽取已正确识别，但根据契约要求需确保单位字段存在且正确。此处首次抽取已正确，故无需提问，但若视为缺失单位字段则需补充。鉴于首次抽取有feed_pressure_unit: null，需确认。"}
+  ]
+}

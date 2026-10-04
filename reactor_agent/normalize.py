@@ -199,26 +199,6 @@ def expand_ambiguous_species(name: str, present: list[str]) -> tuple[list[str], 
     return [], False
 
 
-def stated_pure_feed(text: str) -> str | None:
-    # A pure constituent stream does not prove the composition of multiple feeds.
-    if re.search(r'另一|第二股|另一路|另股|分别进料|混合进料|mixed\s+feed|second\s+feed', text, re.I):
-        return None
-    """Resolve an explicitly pure feed, without choosing a component from products."""
-    found = set()
-    patterns = (r'(?:进料|原料)(?:为|是)?\s*纯([^，。；;\s]+)',
-                r'纯([^，。；;\s]+?)(?:进料|原料)',
-                r'pure\s+([A-Za-z-]+)\s+feed')
-    for clause in re.split(r'[，。；;\n]', text):
-        if re.search(r'不是纯|并非纯|非纯|不纯|not\s+pure', clause, re.I):
-            continue
-        for pattern in patterns:
-            for match in re.finditer(pattern, clause, re.I):
-                name = resolve_species(match.group(1))
-                if name:
-                    found.add(name)
-    return next(iter(found)) if len(found) == 1 else None
-
-
 def stated_xylene_isomers(text: str) -> bool:
     return (all(name in text for name in ('邻二甲苯', '间二甲苯', '对二甲苯'))
             or bool(re.search(r'邻\s*[、,/和及]\s*间\s*[、,/和及]\s*对\s*(?:三种)?二甲苯', text)))
@@ -674,6 +654,10 @@ def normalize(facts: dict[str, Any], source_text: str, *,
     straight into a case and produce a confident wrong answer.
     """
     report = NormalizationReport()
+    from .input_recovery import recover_explicit_units
+    facts, unit_records = recover_explicit_units(source_text, facts)
+    for item in unit_records:
+        report.record('unit recovered from the original request: %s = %s' % (item['field'], item['value']))
     for item in facts.get('_review_questions') or []:
         path = {'feed_total': 'feeds[0].total_flow',
                 'feed_temperature': 'feeds[0].temperature',
@@ -700,6 +684,15 @@ def normalize(facts: dict[str, Any], source_text: str, *,
                    '未经确认的数值不会用于建模。'))
 
     # ---------------------------------------------------------------- feeds
+    for value_field, unit_field, label in (
+            ('feed_total', 'feed_unit', '进料流量'),
+            ('feed_temperature', 'feed_temperature_unit', '进料温度'),
+            ('feed_pressure', 'feed_pressure_unit', '进料压力')):
+        if (facts.get(value_field) is not None and not str(facts.get(unit_field) or '').strip()
+                and not any(q.field == value_field for q in report.questions)):
+            report.questions.append(Question(id='q-review:' + unit_field, field=unit_field,
+                blocking=True, question='请提供%s的单位。' % label,
+                reason='已知数值不能套用默认单位；先查原文，原文未给出时需要确认。'))
     temperature, changed = _canonical_unit(facts.get('feed_temperature_unit'),
                                            TEMPERATURE_UNITS, 'C')
     if changed:
