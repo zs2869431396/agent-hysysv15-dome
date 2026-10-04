@@ -49,6 +49,8 @@ class ChatTests(unittest.TestCase):
         history = at.session_state['conversations'][0]
         self.assertEqual(history[-1]['payload']['status'], 'READY')
         self.assertIn('explanation.txt', history[-1]['payload']['files'])
+        self.assertIn('process.json', history[-1]['payload']['files'])
+        self.assertTrue(any(e.label == '完整运行过程' for e in at.expander))
         at.run()
         self.assertEqual(len(self.calls), 1)
         at.button[0].click().run()
@@ -124,6 +126,119 @@ class ChatTests(unittest.TestCase):
         other = WebApp(root=Path(self.tmp.name) / 'other', settings=Settings(key='other-secret'))
         self.app.settings.key = 'changed'
         self.assertEqual(other.settings.resolve().key, 'other-secret')
+
+    def test_progress_arrives_before_final_report_and_is_not_fake_execution(self):
+        snapshots = []
+        payload = self.service.start(TOLUENE_TEXT, on_progress=snapshots.append)
+        events = payload['process']
+        self.assertEqual(len(self.calls), 1)
+        self.assertTrue(any(e['stage'] == 'intake' and e['status'] == 'RUNNING' for e in events))
+        intake = next(e for e in events if e['stage'] == 'intake' and e['status'] == 'DONE')
+        self.assertEqual(intake['details']['facts']['conversion_percent'], 50)
+        self.assertTrue(any(e['stage'] == 'execute' and e['status'] == 'SKIPPED' for e in events))
+        self.assertFalse(any(e['stage'] == 'case' for e in events))
+        self.assertTrue(any(s[-1]['stage'] == 'plan' and
+                            all(e['stage'] != 'explain' for e in s) for s in snapshots))
+
+    def test_trace_keeps_clarification_and_resume_without_another_model_call(self):
+        self.facts = GASIFICATION_FACTS
+        pending = self.service.start(GASIFICATION_TEXT)
+        self.assertTrue(any(e['status'] == 'WAITING_INPUT' for e in pending['process']))
+        payload = self.service.answer(pending['run_id'], chat_answers('默认', pending['questions']))
+        self.assertEqual(len(self.calls), 1)
+        self.assertTrue(any(e['stage'] == 'answer' for e in payload['process']))
+        self.assertEqual(sum(e['stage'] == 'intake' and e['status'] == 'DONE'
+                             for e in payload['process']), 1)
+        self.assertEqual(payload['process'][-1]['status'], 'READY')
+
+    def test_real_mode_reports_each_actual_adapter_call_once(self):
+        from reactor_agent.test_graph import RecordingAdapter
+        adapter = RecordingAdapter()
+        with patch('reactor_agent.adapters.hysys_cli.HysysCliAdapter', return_value=adapter):
+            payload = self.service.start(TOLUENE_TEXT, execute=True)
+        self.assertEqual(payload['status'], 'PASS')
+        self.assertEqual(adapter.calls, ['single'])
+        cases = [e for e in payload['process'] if e['stage'] == 'case']
+        self.assertEqual([e['status'] for e in cases], ['RUNNING', 'PASS'])
+        self.assertEqual(cases[-1]['details']['case_id'], 'single')
+        self.assertTrue(any(e['stage'] == 'execute' and e['status'] == 'PASS'
+                            for e in payload['process']))
+
+    def test_three_demo_scenarios_trace_end_to_end_with_offline_workers(self):
+        from reactor_agent.test_graph import RecordingAdapter
+        from reactor_agent.test_live_intake import fixture
+        from reactor_agent.web import scenarios
+        for scenario, facts in (('toluene', TOLUENE_FACTS), ('smr', fixture('smr')),
+                                ('gasification', GASIFICATION_FACTS)):
+            with self.subTest(scenario=scenario):
+                self.facts = facts
+                adapter = RecordingAdapter()
+                with patch('reactor_agent.adapters.hysys_cli.HysysCliAdapter', return_value=adapter):
+                    payload = self.service.start(scenarios()[scenario]['text'],
+                                                 scenario=scenario, execute=True)
+                    if payload['status'] == 'WAITING_INPUT':
+                        self.assertEqual(adapter.calls, [])
+                        payload = self.service.answer(payload['run_id'],
+                            chat_answers('默认', payload['questions']))
+                self.assertEqual(payload['status'], 'PASS')
+                expected = 2 if scenario == 'smr' else 1
+                self.assertEqual(len(adapter.calls), expected)
+                self.assertEqual(sum(e['stage'] == 'case' and e['status'] == 'PASS'
+                                     for e in payload['process']), expected)
+                self.assertEqual(payload['process'][-1]['status'], 'PASS')
+
+    def test_streaming_preserves_the_existing_graph_specs_and_report(self):
+        run = self.app.new_run('custom', False)
+        before = self.app.start(run, TOLUENE_TEXT, '', '', 'mixed', 'mass_fraction')
+        payload = self.service.start(TOLUENE_TEXT)
+        after = self.app.current_state(self.app.get_run(payload['run_id']))
+        self.assertEqual(before['cases'], after['cases'])
+        self.assertEqual(before['decision'], after['decision'])
+        self.assertEqual(before['explanation'], payload['report'])
+
+    def test_timeout_stops_later_cases_and_is_recorded_as_failure(self):
+        from reactor_agent.test_graph import RecordingAdapter
+        from reactor_agent.test_live_intake import fixture
+        from reactor_agent.web import scenarios
+        self.facts = fixture('smr')
+        adapter = RecordingAdapter(['TIMEOUT'])
+        with patch('reactor_agent.adapters.hysys_cli.HysysCliAdapter', return_value=adapter):
+            payload = self.service.start(scenarios()['smr']['text'], scenario='smr', execute=True)
+        self.assertEqual(payload['status'], 'FAILED')
+        self.assertEqual(len(adapter.calls), 1)
+        returned = [e for e in payload['process'] if e['stage'] == 'case' and e['status'] != 'RUNNING']
+        self.assertEqual([e['status'] for e in returned], ['TIMEOUT'])
+        self.assertEqual(payload['process'][-1]['status'], 'FAILED')
+
+    def test_callback_failure_cannot_repeat_or_abort_execution(self):
+        def broken_callback(_events):
+            raise RuntimeError('page disconnected')
+        payload = self.service.start(TOLUENE_TEXT, on_progress=broken_callback)
+        self.assertEqual(payload['status'], 'READY')
+        self.assertEqual(len(self.calls), 1)
+
+    def test_process_file_redacts_credential_even_in_provider_errors(self):
+        secret = self.app.settings.resolve().key
+        with patch.object(self.app, 'start', side_effect=RuntimeError('Error: ' + secret)):
+            with self.assertRaises(RuntimeError):
+                self.service.start(TOLUENE_TEXT)
+        run = next(iter(self.app.runs.values()))
+        raw = (run.folder / 'process.json').read_text(encoding='utf-8')
+        self.assertNotIn(secret, raw)
+        events = json.loads(raw)
+        self.assertEqual(events[-1]['status'], 'FAILED')
+        self.assertIn('[已隐藏]', events[-1]['details']['error'])
+
+    def test_ui_failure_keeps_trace_and_does_not_run_on_refresh(self):
+        at = self.ui()
+        with patch.object(self.app, 'start', side_effect=RuntimeError('offline failure')):
+            at.chat_input[0].set_value(TOLUENE_TEXT).run()
+        self.assertFalse(at.exception)
+        self.assertTrue(at.error)
+        self.assertEqual(at.session_state['conversations'][0][-1]['payload']['status'], 'FAILED')
+        self.assertTrue(any(e.label == '完整运行过程' for e in at.expander))
+        at.run()
+        self.assertEqual(len(self.calls), 0)
 
 
 if __name__ == '__main__':

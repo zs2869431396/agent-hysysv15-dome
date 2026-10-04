@@ -79,6 +79,7 @@ DOWNLOADABLE = (
     re.compile(r'^normalization\.json$'),
     re.compile(r'^explanation\.txt$'),
     re.compile(r'^paused\.json$'),
+    re.compile(r'^process\.json$'),
 )
 
 _RUN_ID = re.compile(r'^[A-Za-z0-9._-]{1,80}$')
@@ -244,7 +245,7 @@ class WebApp:
         """The model client for the current settings. A seam for the tests."""
         return ChatClient(self.settings.config(), logger=lambda _m: None)
 
-    def _build(self, run: Run, saver):
+    def _build(self, run: Run, saver, progress: bool = False):
         """The graph for one run. `saver` is the value yielded by `_open`."""
         adapter = None
         if run.execute:
@@ -252,24 +253,34 @@ class WebApp:
 
             adapter = HysysCliAdapter(PROJECT_ROOT,
                                       python=os.environ.get('HYSYS_AGENT_PYTHON'))
+            if progress:
+                from .process_trace import ProgressAdapter
+                adapter = ProgressAdapter(adapter)
         return build_graph(self.client(), adapter=adapter, run_root=run.folder,
                            dry_run=not run.execute, checkpointer=saver)
 
     def start(self, run: Run, text: str, scenario: str, kind: str, phase: str,
-              feed_basis: str) -> dict[str, Any]:
+              feed_basis: str, on_event=None) -> dict[str, Any]:
         with self._open(run) as saver:
-            graph = self._build(run, saver)
-            return graph.invoke(
-                initial_state(text, scenario_label=run.label, kind=kind, phase=phase,
-                              feed_basis=feed_basis,
-                              allowed_ungrounded=allowed_ungrounded(scenario)),
-                {'configurable': {'thread_id': run.thread_id}})
+            graph = self._build(run, saver, progress=True) if on_event else self._build(run, saver)
+            inputs = initial_state(text, scenario_label=run.label, kind=kind, phase=phase,
+                                   feed_basis=feed_basis,
+                                   allowed_ungrounded=allowed_ungrounded(scenario))
+            config = {'configurable': {'thread_id': run.thread_id}}
+            if on_event:
+                from .process_trace import stream_graph
+                return stream_graph(graph, inputs, config, on_event)
+            return graph.invoke(inputs, config)
 
-    def answer(self, run: Run, answers: dict[str, Any]) -> dict[str, Any]:
+    def answer(self, run: Run, answers: dict[str, Any], on_event=None) -> dict[str, Any]:
         from langgraph.types import Command
 
         with self._open(run) as saver:
-            graph = self._build(run, saver)
+            graph = self._build(run, saver, progress=True) if on_event else self._build(run, saver)
+            if on_event:
+                from .process_trace import stream_graph
+                return stream_graph(graph, Command(resume=answers),
+                                    {'configurable': {'thread_id': run.thread_id}}, on_event)
             return graph.invoke(Command(resume=answers),
                                 {'configurable': {'thread_id': run.thread_id}})
 

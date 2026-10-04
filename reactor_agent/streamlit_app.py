@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import sys
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import streamlit as st
@@ -14,7 +15,48 @@ from reactor_agent.chat_service import ChatService, chat_answers
 from reactor_agent.web import PROJECT_ROOT, SCENARIO_LABELS, WebApp, scenarios
 
 STATUS = {'READY': '方案已就绪', 'PASS': '模拟通过', 'FAILED': '运行失败',
-          'WAITING_INPUT': '等待补充信息', 'RUNNING': '正在处理'}
+          'WAITING_INPUT': '等待补充信息', 'RUNNING': '正在处理', 'DONE': '已完成',
+          'SKIPPED': '未产生新计算', 'PARTIAL': '部分工况通过', 'UNSUPPORTED': '当前不支持',
+          'TIMEOUT': '执行超时', 'CANNOT_CONNECT_TO_HYSYS': '无法连接 HYSYS',
+          'NO_RESULT': '未返回结果', 'REFUSED_BEFORE_EXECUTION': '执行前被拒绝'}
+
+
+def render_process(events):
+    st.markdown('**输入到结果的运行过程**')
+    # Pair each start with its completion; keep repeated planning rounds and every case.
+    rows = []
+    active = {}
+    for event in events:
+        details = event.get('details') or {}
+        identity = (event['stage'], details.get('case_id'), details.get('attempt'))
+        if event['status'] != 'RUNNING' and identity in active:
+            rows[active.pop(identity)] = (identity, event)
+        else:
+            if event['status'] == 'RUNNING':
+                active[identity] = len(rows)
+            rows.append((identity, event))
+    for _, event in rows:
+        status = event['status']
+        icon = ('⏳' if status == 'RUNNING' else '❓' if status == 'WAITING_INPUT'
+                else '⏭️' if status == 'SKIPPED' else '⚠️' if status == 'PARTIAL'
+                else '✅' if status in ('DONE', 'PASS', 'READY') else '❌')
+        stamp = datetime.fromisoformat(event['time']).astimezone(
+            timezone(timedelta(hours=8))).strftime('%H:%M:%S')
+        st.markdown(f'{icon} **{event["title"]}** · {STATUS.get(status, status)} · {stamp}')
+        details = event.get('details') or {}
+        if event['stage'] == 'plan':
+            decision = details.get('decision') or {}
+            if decision:
+                st.caption('反应器：%s · 能力：%s · 热边界：%s · 工况数：%d' % (
+                    decision.get('executed') or decision.get('preferred'),
+                    decision.get('capability'), details.get('thermal_mode'),
+                    len(details.get('cases') or [])))
+        if event['stage'] == 'execute' and status == 'SKIPPED':
+            st.caption('本节点没有发起新的 HYSYS 计算；方案模式只生成规格。')
+        if details and event['stage'] not in ('finished', 'explain'):
+            with st.expander('查看：' + event['title']):
+                st.json(details)
+    st.caption('时间为北京时间；各阶段耗时不同。详情和 process.json 来自实际运行事件。')
 
 
 def default_text(value):
@@ -78,6 +120,11 @@ def main():
                 continue
             st.markdown('**' + STATUS.get(payload['status'], payload['status']) + '** · '
                         + ('HYSYS 执行' if payload['execute'] else '方案模式'))
+            if payload.get('process'):
+                with st.expander('完整运行过程', expanded=True):
+                    render_process(payload['process'])
+            if payload.get('error'):
+                st.error(payload['error'])
             if payload.get('report'):
                 st.text(payload['report'])
             for problem in payload.get('problems', []):
@@ -124,15 +171,23 @@ def main():
 
 
 def send(service, history, text, *, pending=None, answers=None, **options):
+    latest = {}
     try:
         if pending:
             answers = answers or chat_answers(text, pending['questions'])
         with st.chat_message('user'):
             st.write(text)
         with st.chat_message('assistant'):
-            with st.status('正在处理：整理需求 → 校验 → 追问或计算', expanded=True):
-                payload = (service.answer(pending['run_id'], answers) if pending
-                           else service.start(text, **options))
+            with st.status('正在运行，请查看各阶段的实际状态', expanded=True) as running:
+                process_box = st.empty()
+                def on_progress(events):
+                    latest['events'] = events
+                    with process_box.container():
+                        render_process(events)
+                payload = (service.answer(pending['run_id'], answers, on_progress=on_progress)
+                           if pending else service.start(text, on_progress=on_progress, **options))
+                running.update(label=STATUS.get(payload['status'], payload['status']),
+                               state='error' if payload['status'] in ('FAILED', 'PARTIAL') else 'complete')
         history.extend([{'role': 'user', 'text': text},
                         {'role': 'assistant', 'payload': payload}])
         st.rerun()
@@ -142,6 +197,12 @@ def send(service, history, text, *, pending=None, answers=None, **options):
         secret = service.app.settings.resolve().key
         if secret:
             message = message.replace(secret, '[已隐藏]')
+        if latest.get('events'):
+            run = service.app.get_run(latest['events'][-1]['run_id'])
+            payload = dict(service.app.run_payload(run), process=latest['events'], error=message)
+            history.extend([{'role': 'user', 'text': text},
+                            {'role': 'assistant', 'payload': payload}])
+            st.rerun()
         st.error('处理失败：' + message)
 
 
