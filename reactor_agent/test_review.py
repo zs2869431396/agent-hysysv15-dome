@@ -12,7 +12,7 @@ from reactor_agent.chat_service import ChatService
 from reactor_agent.graph import build_graph, initial_state
 from reactor_agent.llm import ChatClient, LlmConfig, LlmError
 from reactor_agent.pipeline import run_pipeline
-from reactor_agent.review import review_facts
+from reactor_agent.review import REVIEW_SCHEMA, review_facts, value_errors
 from reactor_agent.test_graph import RecordingAdapter
 from reactor_agent.test_normalize import SMR_FACTS
 from reactor_agent.fixtures.ui_cases import TOLUENE_FACTS, TOLUENE_TEXT
@@ -37,6 +37,8 @@ PRESSURE_FACTS['reactions'] = [
 EMPTY_REVIEW = {'corrections': [], 'questions': []}
 LIVE_REVIEW = json.loads((Path(__file__).parent / 'fixtures' /
                          'toluene_review_failure.json').read_text(encoding='utf-8'))
+LIVE_GASIFICATION = json.loads((Path(__file__).parent / 'fixtures' /
+                         'gasification_review_input.json').read_text(encoding='utf-8'))
 
 
 def live_toluene_facts():
@@ -57,10 +59,10 @@ def patch_field(field, value, quote):
 
 def model_client(facts, review, **config):
     calls = []
-    replies = [facts, review]
+    replies = [facts] + (review if isinstance(review, list) else [review])
     def transport(url, payload, headers, timeout):
         calls.append(copy.deepcopy(payload))
-        reply = replies[min(len(calls) - 1, 1)]
+        reply = replies[min(len(calls) - 1, len(replies) - 1)]
         return 200, json.dumps({'choices': [{'finish_reason': 'stop',
             'message': {'content': json.dumps(reply, ensure_ascii=False)}}]})
     client = ChatClient(LlmConfig(base='https://example.test/v1',
@@ -70,6 +72,83 @@ def model_client(facts, review, **config):
 
 
 class ReviewTests(unittest.TestCase):
+    def test_nested_format_errors_have_specific_paths(self):
+        replies = [
+            ({'corrections': [], 'questions': [{'field': 'feed_total', 'question': 'q'}]},
+             '$.questions[0].reason: required field missing'),
+            ({'corrections': [{'field': 'feed_total', 'value_json': 80000, 'evidence': 'q'}], 'questions': []},
+             '$.corrections[0].value_json: expected string, got int'),
+            ({'corrections': [], 'questions': [{'field': 'feed_total', 'question': 'q', 'reason': None}]},
+             '$.questions[0].reason: expected string, got NoneType'),
+            ({'corrections': []}, '$.questions: required field missing'),
+            ({'corrections': [], 'questions': [], 'approved': True}, '$.approved: unexpected field'),
+        ]
+        for reply, error in replies:
+            with self.subTest(reply=reply):
+                self.assertIn(error, value_errors(reply, REVIEW_SCHEMA))
+
+    def test_gasification_format_repair_preserves_two_required_confirmations(self):
+        bad = {'corrections': [], 'questions': [{'field': 'feed_total', 'question': 'q'}]}
+        client, calls = model_client(LIVE_GASIFICATION['facts'], [bad, EMPTY_REVIEW], max_requests=3)
+        graph = build_graph(client)
+        config = {'configurable': {'thread_id': 'gasification-repair'}}
+        state = graph.invoke(initial_state(LIVE_GASIFICATION['text']), config)
+        self.assertEqual(state['status'], 'WAITING_INPUT', state.get('problems'))
+        self.assertEqual({q['id'] for q in state['blocking']}, {'q-volumetric-flow', 'q-coal-definition'})
+        self.assertEqual(len(calls), 3)
+        attempts = state['review']['format_attempts']
+        self.assertEqual(attempts[0]['reply'], bad)
+        self.assertIn('$.questions[0].reason', attempts[0]['validation_errors'][0])
+        self.assertEqual(attempts[1]['validation_errors'], [])
+        repair = json.loads(calls[2]['messages'][1]['content'])
+        self.assertEqual(repair['previous_reply'], bad)
+        self.assertEqual(repair['original_text'], LIVE_GASIFICATION['text'])
+        self.assertEqual(repair['extracted_facts'], LIVE_GASIFICATION['facts'])
+        state = graph.invoke(Command(resume={q['id']: q['default'] for q in state['blocking']}), config)
+        self.assertEqual(state['status'], 'READY', state.get('blocking'))
+        self.assertEqual(state['cases'][0]['spec']['reactor']['solid_carbon'], 'saturation')
+        self.assertEqual(len(calls), 3)
+
+    def test_failed_format_repair_saves_both_replies_without_execution(self):
+        bad = {'corrections': [{'field': 'feed_total', 'value_json': '80000'}], 'questions': []}
+        client, calls = model_client(LIVE_GASIFICATION['facts'], bad)
+        adapter = RecordingAdapter()
+        state = build_graph(client, adapter=adapter, dry_run=False).invoke(
+            initial_state(LIVE_GASIFICATION['text']), {'configurable': {'thread_id': 'bad-review-shape'}})
+        self.assertEqual(state['status'], 'FAILED')
+        self.assertIn('$.corrections[0].evidence', state['review']['error'])
+        self.assertEqual(len(state['review']['format_attempts']), 2)
+        self.assertEqual(state['review']['format_attempts'][0]['reply'], bad)
+        self.assertEqual(len(calls), 3)
+        self.assertFalse(adapter.calls)
+        self.assertEqual(state['facts'], LIVE_GASIFICATION['facts'])
+
+    def test_format_repair_does_not_exceed_request_budget(self):
+        client, calls = model_client(TOLUENE_FACTS, {'corrections': []}, max_requests=2)
+        state = build_graph(client).invoke(initial_state(TOLUENE_TEXT),
+            {'configurable': {'thread_id': 'format-budget'}})
+        self.assertEqual(state['status'], 'FAILED')
+        self.assertEqual(len(calls), 2)
+        self.assertIn('$.questions', state['review']['error'])
+        self.assertEqual(len(state['review']['format_attempts']), 1)
+
+    def test_single_pass_failure_preserves_format_diagnostics(self):
+        client, calls = model_client(TOLUENE_FACTS, {'corrections': []})
+        run = run_pipeline(TOLUENE_TEXT, client=client)
+        self.assertEqual(run.status, 'FAILED')
+        self.assertIn('$.questions', run.input_review['error'])
+        self.assertEqual(len(run.input_review['format_attempts']), 2)
+        self.assertEqual(len(calls), 3)
+
+    def test_format_attempt_records_redact_configured_credential(self):
+        bad = {'corrections': [], 'questions': [], 'unexpected': 'offline-review-secret-for-tests'}
+        client, _ = model_client(TOLUENE_FACTS, bad)
+        state = build_graph(client).invoke(initial_state(TOLUENE_TEXT),
+            {'configurable': {'thread_id': 'format-secret'}})
+        self.assertEqual(state['status'], 'FAILED')
+        self.assertNotIn(client.config.key, json.dumps(state['review']))
+        self.assertIn('[REDACTED]', json.dumps(state['review']))
+
     def test_user_live_review_replays_to_ready_without_extra_questions(self):
         client, calls = model_client(live_toluene_facts(),
             {'corrections': LIVE_REVIEW['corrections'], 'questions': []})

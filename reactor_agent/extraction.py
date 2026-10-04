@@ -971,12 +971,13 @@ def extract_verified(client: ChatClient, text: str, kind: str = '',
     enabled = client.config.review if review is None else review
     extraction = extract(client, text, kind=None if client.config.review else kind or None)
     if enabled and not extraction.error:
-        from .review import review_facts
+        from .review import review_facts, review_failure_record
         try:
             extraction.facts, record = review_facts(client, text, extraction.facts)
             extraction.facts['_review_record'] = record
         except LlmError as exc:
             extraction.error = '输入审核失败：%s' % exc
+            extraction.facts['_review_record'] = review_failure_record(exc)
     problems: list[str] = []
     if extraction.error:
         problems.append('model call failed: %s' % extraction.error)

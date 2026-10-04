@@ -1,0 +1,82 @@
+{
+  "provenance": "Actual first-model extraction from workstation process.json. Failed review reply was not saved; format-repair tests use explicitly synthetic review replies.",
+  "text": "我要模拟水煤浆的气化过程。进料为煤炭和水，流量80000Nm3/h，压力40bar，水煤浆进料浓度62wt%，进料温度40摄氏度，主要反应：C+H2O → CO+H2。请帮我计算一下气化炉出口温度为1400度时出口组成及CO的收率，反应器灰分不做考虑",
+  "facts": {
+    "species": [
+      "碳",
+      "水",
+      "一氧化碳",
+      "氢气"
+    ],
+    "feed_composition": [
+      {
+        "name": "煤炭",
+        "fraction": 62
+      },
+      {
+        "name": "水",
+        "fraction": 38
+      }
+    ],
+    "composition_basis": "mass_fraction",
+    "reactions": [
+      {
+        "name": "C+H2O → CO+H2",
+        "species": [
+          {
+            "name": "碳",
+            "coefficient": -1
+          },
+          {
+            "name": "水",
+            "coefficient": -1
+          },
+          {
+            "name": "一氧化碳",
+            "coefficient": 1
+          },
+          {
+            "name": "氢气",
+            "coefficient": 1
+          }
+        ],
+        "reversible": false
+      }
+    ],
+    "conversion_percent": null,
+    "conversion_basis": null,
+    "rate_law": null,
+    "pre_exponential": null,
+    "activation_energy": null,
+    "activation_energy_unit": null,
+    "reaction_order": [],
+    "reactor_volume": null,
+    "reactor_volume_unit": null,
+    "residence_time": null,
+    "residence_time_unit": null,
+    "catalyst_mass": null,
+    "catalyst_mass_unit": null,
+    "phase": "unknown",
+    "feed_total": 80000,
+    "feed_unit": "Nm3/h",
+    "feed_temperature": 40,
+    "feed_temperature_unit": "摄氏度",
+    "feed_pressure": 40,
+    "feed_pressure_unit": "bar",
+    "case_pressures": [],
+    "case_pressure_unit": null,
+    "outlet_temperatures": [
+      1400
+    ],
+    "outlet_temperature_unit": "度",
+    "missing_information": [
+      "煤炭的具体化学组成（如碳含量、挥发分等）",
+      "气化炉的操作压力是否恒定或变化",
+      "反应平衡常数或动力学参数",
+      "热损失情况",
+      "灰分的具体处理方式及影响",
+      "进料中水的状态（液态还是气态，虽然通常水煤浆为液态，但Nm3/h单位通常用于气体，这里存在歧义）",
+      "出口压力的具体数值"
+    ]
+  }
+}

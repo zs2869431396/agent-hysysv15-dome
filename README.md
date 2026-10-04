@@ -53,7 +53,7 @@ status ALL_SCENARIOS_PASS
 | 甲烷蒸汽重整 | `READY` —— Equilibrium（verified），两个工况，案例名 `smr-710C`/`smr-600C`，自定流量甲烷 1000 kmol/h（总 3700 kmol/h，约 128 kt/a） |
 | 水煤浆气化 | 先 `WAITING_INPUT`（两题都带默认答案）；回车采用默认后 `READY` —— Gibbs（verified），spec 含 `flow_input: normal_volume` 与 `solid_carbon: saturation` |
 
-**离线验证**：本次 Agent 层 493 项回归、打包器 17 项通过；工具层已有 122 项自检和
+**离线验证**：本次 Agent 层 499 项回归、打包器 17 项通过；工具层已有 122 项自检和
 184 项回归，验收哈希保持一致。`scripts\run-all-tests.cmd` 可发现并运行全部测试。
 
 ## 目录结构
