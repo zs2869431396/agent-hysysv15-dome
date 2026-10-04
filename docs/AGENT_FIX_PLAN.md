@@ -957,4 +957,4 @@ grep -rn "拒绝\|refuse\|BLOCKED\|FixedK\|Ln(K)\|unsupported\|experimental\|--g
 | Nm³ 换算 | 80000 / 22.41397 | 3569.20 kmol/h |
 | 重整自定流量 | 1000 × 16.043 × 8000 / 1e6 | 约 128.3 kt/a 甲烷 |
 
-**F. 修复前的问题证据**（`_demo/smoke-agent.json`）：气化的阻塞问题列表里，同一句 Nm³ 问题出现了两次，分别来自 normalize 和 compiler；甲苯 spec 的反应名是“歧化反应”，相态是 `liquid`；重整 spec 进料总流量 1370.37 kmol/h，即甲烷只有 370 kmol/h，反应器是 Gibbs。修完后用同一场景重跑，这四处都应改变。
+**F. 修复前的问题证据**（`verification/legacy-model-evaluation/smoke-agent.json`）：气化的阻塞问题列表里，同一句 Nm³ 问题出现了两次，分别来自 normalize 和 compiler；甲苯 spec 的反应名是“歧化反应”，相态是 `liquid`；重整 spec 进料总流量 1370.37 kmol/h，即甲烷只有 370 kmol/h，反应器是 Gibbs。修完后用同一场景重跑，这四处都应改变。

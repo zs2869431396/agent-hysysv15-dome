@@ -210,7 +210,7 @@ Base URL   https://tokenrhythm.studio/v1
 凭据       运行时从环境变量读入（TR_BASE / TR_KEY），不写入任何文件
 ```
 
-实测结论（`scripts/probe_llm.py`、`scripts/bench_llm.py`，结果落在 `_demo/`）：
+历史实测结论（记录保存在 `verification/legacy-model-evaluation/`；新探测输出到已忽略的 `_demo/`）：
 
 | 能力 | 结果 |
 |---|---|

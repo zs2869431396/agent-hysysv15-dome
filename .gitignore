@@ -22,8 +22,7 @@ secrets*
 agent-runs/
 tool-layer-runs/*/
 !tool-layer-runs/acceptance-*/
-_demo/*.log
-_demo/_*.json
+_demo/
 
 # ---- Python ----
 __pycache__/

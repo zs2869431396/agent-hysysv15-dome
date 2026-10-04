@@ -91,7 +91,7 @@ status ALL_SCENARIOS_PASS
 │   ├── web.py                # 共享后端与旧版表单网页
 │   ├── web_static/index.html #   页面：模型连接、需求、追问、结果、下载
 │   ├── __main__.py           # CLI：python -m reactor_agent（默认走状态图）
-│   └── test_*.py             # 373 项离线测试
+│   └── test_*.py             # 智能体离线回归测试
 ├── docs/
 │   ├── TOOL_REFERENCE.md         # 工具层接口参考（agent 可直接读）
 │   ├── REMOTE_VALIDATION.md      # 远程验收步骤与判读
@@ -105,8 +105,8 @@ status ALL_SCENARIOS_PASS
 │   ├── probe_llm.py          # 探测模型端点能力
 │   ├── bench_llm.py          # 模型准确率与速度基准
 │   ├── pick_model.py         # 批量模型选型（TR_MODELS=a,b,c）
-│   ├── probe_feeds_add.py    # Feeds.Add 失败定位探针
-│   └── run-all-tests.cmd     # 一键跑全部离线测试（13 个套件）
+│   └── run-all-tests.cmd     # 一键发现并运行全部离线测试
+├── verification/            # 验证材料；legacy-model-evaluation 为历史模型记录
 ├── tool-layer-runs/          # 运行产物与验收证据
 ├── baseline_expected.json    # 历史真机结果，用于容差比对（不是本版输出）
 ├── PROJECT_PLAN.md           # 项目计划与当前进度
@@ -115,6 +115,9 @@ status ALL_SCENARIOS_PASS
 ├── README.md
 └── Run-*.cmd                 # 双击入口：Agent 真机流程 / 仅离线检查 / 工具层验收
 ```
+
+本地运行产物 `agent-runs/`、模型探测输出 `_demo/`、归档 `_archive/` 与缓存不进入 Git。
+历史模型输出集中在 `verification/legacy-model-evaluation/`，当前验收证据保留原路径。
 
 ## 环境与安装
 

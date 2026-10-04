@@ -158,7 +158,7 @@ Base URL   https://tokenrhythm.studio/v1
 凭据       TR_BASE / TR_KEY 环境变量
 ```
 
-实测结果（`scripts/probe_llm.py` → `_demo/llm-probe.json`）：
+历史实测结果（`verification/legacy-model-evaluation/llm-probe.json`；新探测仍输出到已忽略的 `_demo/`）：
 
 | 能力 | 结果 |
 |---|---|

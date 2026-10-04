@@ -1,15 +1,12 @@
-# 第一轮外部审查的冻结证据（2026-10-03 上午）
+# 文档导航
 
-本目录保存第一轮独立审查的原始材料，针对的是 2026-10-03 上午的代码版本。审查报告的 10 项缺陷及修复方式，见 `docs/REVIEW_BRIEF.md` 第 1.5 节。
+- [远程验收](REMOTE_VALIDATION.md)：工作站运行步骤与结果判读。
+- [工具接口](TOOL_REFERENCE.md)：HYSYS 工具层的数据接口。
+- [Equilibrium 与饱和碳路线](EQUILIBRIUM_INTEGRATION.md)：反应器接入说明。
+- [审查说明](REVIEW_BRIEF.md)：问题复盘、能力边界与证据。
+- [当前工具层验收记录](tool-acceptance-20261003-105341.json)：验收哈希依据。
+- [历史审查材料](review-20261003/README.md)：2026-10-03 上午版本的冻结记录。
 
-| 文件 | 内容 |
-|---|---|
-| `verify.py` | 审查者的离线复现脚本，只用假模型和假工作进程，不连接 HYSYS |
-| `reproductions.json` | 13 个复现场景的输出 |
-| `repro-console.txt` | 复现时的控制台输出 |
-| `suites.json` | 当时各测试套件的运行结果 |
-| `frozen-tool-hashes.json` | 当时核对工具层 12 个文件哈希的结果 |
-
-**不要对当前代码重跑 `verify.py`。** 它核对的是旧版工具层的文件哈希，当前工具层已更新为验收 `20261003-105341-4467d9c9` 的版本，哈希必然不一致；它还直接导入当时的测试辅助函数和模块，智能体层重构后可能导入失败。这些结果只说明当时的状态，不能据此报告当前代码的缺陷。
-
-当前工具层的哈希以 `docs/tool-acceptance-20261003-105341.json` 为准。
+`AGENT_FIX_PLAN.md`、`AGENT_FIX_NOTES.md`、`AGENT_IMPLEMENTATION_PLAN.md`
+和 `GWOA_MIGRATION.md` 保留设计与修复过程，不能替代当前版本的测试结果。
+项目安装和 Streamlit 启动说明见根目录 [README](../README.md)。
