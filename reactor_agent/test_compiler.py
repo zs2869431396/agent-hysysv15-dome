@@ -16,6 +16,7 @@ from hysys_tools import examples, precheck
 from reactor_agent.capabilities import combination_status
 from reactor_agent.compiler import (
     CompileError,
+    coal_assumption,
     coal_questions,
     compile_plan,
     feed_questions,
@@ -298,6 +299,57 @@ class GasificationIsBlockedNotGuessed(unittest.TestCase):
         self.assertIsNone(plan.cases[0].spec)
         self.assertNotIn('kg/h', ' '.join(
             q.question for q in plan.blocking_questions()))
+
+
+class CoalMentionRegressionTests(unittest.TestCase):
+    def test_water_gas_shift_does_not_request_coal_confirmation(self):
+        for text in ('模拟气相水煤气变换：CO + H2O ⇌ CO2 + H2。',
+                     '水煤气反应按纯碳处理',
+                     'water-gas shift, compare the reaction characteristics'):
+            with self.subTest(text=text):
+                request = smr_plan().request.model_copy(update={'source_text': text})
+                self.assertEqual(coal_questions(request), [])
+                self.assertIsNone(coal_assumption(request))
+
+    def test_actual_coal_still_requires_confirmation(self):
+        for text in ('水煤浆气化，进料煤炭和水', '煤气化',
+                     '焦炭和蒸汽', 'coal and steam', 'char and steam',
+                     'charcoal and steam', 'coke and steam',
+                     '煤炭气化，同时考虑水煤气变换反应'):
+            with self.subTest(text=text):
+                request = smr_plan().request.model_copy(update={'source_text': text})
+                self.assertEqual([q.id for q in coal_questions(request)], ['q-coal-definition'])
+                self.assertNotIn('题目只说', coal_questions(request)[0].reason)
+
+    def test_confirmed_coal_retains_assumption(self):
+        request = smr_plan().request.model_copy(update={
+            'source_text': '煤炭气化，考虑水煤气变换，煤按纯碳处理'})
+        self.assertEqual(coal_questions(request), [])
+        self.assertIsNotNone(coal_assumption(request))
+
+    def test_water_gas_shift_compiles_two_cases_without_coal(self):
+        plan = smr_plan((350, 500))
+        plan.request.source_text = (
+            '模拟气相水煤气变换：CO + H2O ⇌ CO2 + H2。'
+            '进料总流量1000 kmol/h，CO 40%、水蒸气60%，进料300℃，'
+            '进料和出口压力10 bar，无压降。出口350℃和500℃，等温。')
+        plan.request.components = ['CO', 'Water', 'CO2', 'Hydrogen']
+        plan.request.reactions = [ReactionSpec(name='WGS', reversible=True,
+            stoichiometry={'CO': -1, 'Water': -1, 'CO2': 1, 'Hydrogen': 1})]
+        plan.request.feeds = [FeedSpec(basis='molar_fraction',
+            fractions={'CO': 0.4, 'Water': 0.6}, total_flow=1000,
+            total_flow_unit='kmol/h', temperature=300, temperature_unit='C',
+            pressure=10, pressure_unit='bar')]
+        plan.components = list(plan.request.components)
+        plan.decision = select_reactor(plan.request)
+        result = compile_plan(plan)
+        self.assertEqual(result.status, 'READY')
+        self.assertEqual(result.decision.preferred_reactor, 'equilibrium')
+        self.assertEqual(len(result.cases), 2)
+        self.assertFalse(result.blocking_questions())
+        for case in result.cases:
+            self.assertIsNotNone(case.spec)
+            self.assertTrue(precheck.validate_spec(case.spec)['ok'])
 
 
 class AnsweringTheQuestionsUnblocksTheRun(unittest.TestCase):

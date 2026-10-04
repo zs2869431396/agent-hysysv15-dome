@@ -144,7 +144,11 @@ COAL_CONFIRMATION = ('纯碳', '纯固体碳', '按碳处理', '按纯碳', '按
 
 def _mentions_coal(request: ProcessRequest) -> bool:
     text = request.source_text.casefold()
-    return any(token in text for token in ('煤', 'coal', '焦', 'char'))
+    # Water-gas shift names a gas reaction, not a solid coal feed. Remove only
+    # that term, so separately stated coal/coke still requires confirmation.
+    text = text.replace('水煤气', '').replace('焦耳', '')
+    return ('煤' in text or '焦' in text
+            or bool(re.search(r'(?<![a-z])(?:coal|char|charcoal|coke)(?![a-z])', text)))
 
 
 def _confirms_pure_carbon(request: ProcessRequest) -> bool:
@@ -176,8 +180,8 @@ def coal_questions(request: ProcessRequest) -> list[Question]:
                  '说明：工具层目前只验收了"碳 + 水"进料，'
                  '按元素分析建模需要另行扩展。',
         default='按纯碳处理',
-        reason=('题目只说"灰分不做考虑"，未给出煤的组成。按纯碳处理是一个会影响'
-                '碳平衡与 CO 收率分母的假设，需要明确认可后才能执行。'))]
+        reason=('输入涉及煤或焦炭，但尚未确认其组成或是否按纯碳处理。该假设会影响'
+                '碳平衡与 CO 收率分母，需要明确认可后才能执行。'))]
 
 
 def coal_assumption(request: ProcessRequest) -> Assumption | None:
