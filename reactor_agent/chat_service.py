@@ -7,6 +7,8 @@ from typing import Any
 
 from .ui_backend import SessionApp, Run, persist_run, questions_of, scenarios
 from .process_trace import ProcessTrace
+from .conversation import interpret_turn, revised_facts
+from .nodes.state import initial_state
 
 EXECUTION_LOCK = threading.Lock()
 
@@ -39,6 +41,44 @@ class ChatService:
             raise ValueError('请回答当前列出的问题。')
         return self._invoke(run, lambda observer: self.app.answer(run, answers, on_event=observer),
                             on_progress=on_progress, input_details={'answers': answers})
+
+    def follow_up(self, run_id: str, text: str, history: list[dict], *,
+                  execute: bool = False, basis: str = 'mass_fraction',
+                  on_progress=None) -> dict:
+        """Continue a chat using the last run as structured memory."""
+        if not text.strip():
+            raise ValueError('请先输入消息。')
+        if not self.app.settings.public()['key_set']:
+            raise ValueError('请先在侧栏填写模型 API Key。')
+        previous_run = self.app.get_run(run_id)
+        if previous_run is None:
+            return self.start(text, execute=execute, basis=basis, on_progress=on_progress)
+        previous = self.app.current_state(previous_run)
+        if not previous or not previous.get('facts'):
+            return self.start(text, execute=execute, basis=basis, on_progress=on_progress)
+        turn = interpret_turn(self.app.client(), text, previous, history)
+        action = turn['action']
+        if action == 'new_request':
+            return self.start(text, execute=execute, basis=basis, on_progress=on_progress)
+        if action == 'answer':
+            return {'kind': 'conversation', 'run_id': run_id, 'status': 'DONE',
+                    'execute': previous_run.execute, 'questions': [],
+                    'report': turn['reply'], 'files': [], 'problems': []}
+        facts, source_text = revised_facts(previous, text, turn['corrections'])
+        run = self.app.new_run(previous_run.label, execute, parent_run_id=run_id)
+        state = initial_state(source_text,
+                              scenario_label=previous.get('scenario_label') or run.label,
+                              kind='',  # derive requirements from the revised reactor choice
+                              phase=previous.get('phase') or 'mixed',
+                              feed_basis=previous.get('feed_basis') or basis,
+                              allowed_ungrounded=set(previous.get('allowed_ungrounded') or []))
+        state['facts'] = facts
+        state['extraction_attempts'] = 0
+        state['resolved_fields'] = list(previous.get('resolved_fields') or [])
+        return self._invoke(run, lambda observer: self.app.revise(run, state, on_event=observer),
+                            on_progress=on_progress,
+                            input_details={'revision_of': run_id, 'request': text,
+                                           'changed_fields': [p['field'] for p in turn['corrections']]})
 
     def _invoke(self, run: Run, action, *, on_progress=None, input_details=None) -> dict:
         acquired = False

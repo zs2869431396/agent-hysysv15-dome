@@ -63,7 +63,7 @@ __all__ = [
 
 def build_graph(client: ChatClient, *, adapter: HysysCliAdapter | None = None,
                 run_root: Path | None = None, dry_run: bool = True,
-                checkpointer: Any = None):
+                checkpointer: Any = None, start_at: str = 'intake'):
     """Assemble the graph. `checkpointer=None` keeps state in memory."""
     graph = StateGraph(AgentState)
     graph.add_node('intake', make_intake(client))
@@ -75,7 +75,9 @@ def build_graph(client: ChatClient, *, adapter: HysysCliAdapter | None = None,
                                                 enabled=not dry_run))
     graph.add_node('explain', explain_node)
 
-    graph.add_edge(START, 'intake')
+    if start_at not in ('intake', 'review'):
+        raise ValueError('unknown graph entry: %s' % start_at)
+    graph.add_edge(START, start_at)
     # `review` first runs the same deterministic pre-check as `plan`, then calls
     # the recovery model only for data gaps. The final plan owns every question;
     # the review model never routes the graph or executes HYSYS.

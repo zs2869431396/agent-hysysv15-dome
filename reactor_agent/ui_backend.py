@@ -137,6 +137,7 @@ class Run:
     created_at: str
     status: str = 'RUNNING'
     remaining: int = 0
+    parent_run_id: str | None = None
 
 
 class SessionApp:
@@ -171,7 +172,8 @@ class SessionApp:
                           folder=self.root / item['folder'], label=item['label'],
                           execute=bool(item.get('execute')),
                           created_at=item.get('created_at', ''),
-                          status=item.get('status', 'PAUSED'))
+                          status=item.get('status', 'PAUSED'),
+                          parent_run_id=item.get('parent_run_id'))
                 if run.folder.is_dir():
                     self.runs[run.run_id] = run
             except (KeyError, TypeError):
@@ -181,12 +183,14 @@ class SessionApp:
         payload = [{'run_id': run.run_id, 'thread_id': run.thread_id,
                     'folder': run.folder.name, 'label': run.label,
                     'execute': run.execute, 'created_at': run.created_at,
-                    'status': run.status} for run in self.runs.values()]
+                    'status': run.status, 'parent_run_id': run.parent_run_id}
+                   for run in self.runs.values()]
         self._runs_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
                                    encoding='utf-8')
 
     # ------------------------------------------------------------------- runs
-    def new_run(self, label: str, execute: bool) -> Run:
+    def new_run(self, label: str, execute: bool,
+                parent_run_id: str | None = None) -> Run:
         run_id = uuid.uuid4().hex[:12]
         folder = self.root / ('%s-web-%s-%s' % (label or 'run',
                                                 datetime.now().strftime('%Y%m%d-%H%M%S'),
@@ -194,7 +198,8 @@ class SessionApp:
         folder.mkdir(parents=True, exist_ok=True)
         run = Run(run_id=run_id, thread_id='web-%s' % run_id, folder=folder,
                   label=label or 'run', execute=execute,
-                  created_at=datetime.now().isoformat(timespec='seconds'))
+                  created_at=datetime.now().isoformat(timespec='seconds'),
+                  parent_run_id=parent_run_id)
         with self._lock:
             self.runs[run_id] = run
             self._save_runs()
@@ -212,7 +217,8 @@ class SessionApp:
         """The model client for the current settings. A seam for the tests."""
         return ChatClient(self.settings.config(), logger=lambda _m: None)
 
-    def _build(self, run: Run, saver, progress: bool = False):
+    def _build(self, run: Run, saver, progress: bool = False,
+               start_at: str = 'intake'):
         """The graph for one run. `saver` is the value yielded by `_open`."""
         adapter = None
         if run.execute:
@@ -224,7 +230,18 @@ class SessionApp:
                 from .process_trace import ProgressAdapter
                 adapter = ProgressAdapter(adapter)
         return build_graph(self.client(), adapter=adapter, run_root=run.folder,
-                           dry_run=not run.execute, checkpointer=saver)
+                           dry_run=not run.execute, checkpointer=saver,
+                           start_at=start_at)
+
+    def revise(self, run: Run, state: dict[str, Any], on_event=None) -> dict[str, Any]:
+        """Replan accepted facts in a new run, without extracting a fresh task."""
+        with self._open(run) as saver:
+            graph = self._build(run, saver, progress=bool(on_event), start_at='review')
+            config = {'configurable': {'thread_id': run.thread_id}}
+            if on_event:
+                from .process_trace import stream_graph
+                return stream_graph(graph, state, config, on_event)
+            return graph.invoke(state, config)
 
     def start(self, run: Run, text: str, scenario: str, kind: str, phase: str,
               feed_basis: str, on_event=None) -> dict[str, Any]:

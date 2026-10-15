@@ -8,6 +8,7 @@ from unittest.mock import patch
 from streamlit.testing.v1 import AppTest
 
 from reactor_agent.chat_service import ChatService, EXECUTION_LOCK, chat_answers
+from reactor_agent.conversation import interpret_turn
 from reactor_agent.llm import ChatClient, LlmConfig
 from reactor_agent.fixtures.ui_cases import (TOLUENE_FACTS, TOLUENE_TEXT,
                                     GASIFICATION_FACTS, GASIFICATION_TEXT)
@@ -59,6 +60,78 @@ class ChatTests(unittest.TestCase):
         for path in Path(self.tmp.name).rglob('*'):
             if path.is_file():
                 self.assertNotIn(b'offline-secret-for-tests-only', path.read_bytes())
+
+    def test_follow_up_question_uses_previous_run_without_new_simulation(self):
+        at = self.ui()
+        at.chat_input[0].set_value(TOLUENE_TEXT).run()
+        first = at.session_state['conversations'][0][-1]['payload']
+        turn = {'action': 'answer', 'reply': '上一轮进料压力是 2.5 MPa。',
+                'corrections': []}
+        with patch('reactor_agent.chat_service.interpret_turn', return_value=turn):
+            at.chat_input[0].set_value('上一轮压力是多少？').run()
+        self.assertFalse(at.exception)
+        second = at.session_state['conversations'][0][-1]['payload']
+        self.assertEqual(second['run_id'], first['run_id'])
+        self.assertEqual(second['kind'], 'conversation')
+        self.assertEqual(len(self.app.runs), 1)
+        self.assertEqual(len(self.calls), 1)
+
+    def test_follow_up_context_includes_previous_chat_answers(self):
+        class CaptureClient:
+            def complete(self, _system, user, **_kwargs):
+                self.context = json.loads(user)
+                return {'action': 'answer', 'reply': '继续说明', 'corrections': []}
+        client = CaptureClient()
+        history = [{'role': 'user', 'text': '压力是多少'},
+                   {'role': 'assistant', 'payload': {'kind': 'conversation',
+                                                    'report': '压力为 2.5 MPa'}}]
+        interpret_turn(client, '为什么是这个值？', {'facts': {}}, history)
+        self.assertEqual(client.context['recent_dialogue'][-1]['text'], '压力为 2.5 MPa')
+
+    def test_follow_up_revision_replans_from_accepted_facts(self):
+        first = self.service.start(TOLUENE_TEXT)
+        original = self.app.current_state(self.app.get_run(first['run_id']))
+        turn = {'action': 'revise', 'reply': '压力调整为 3 MPa。',
+                'corrections': [{'field': 'feed_pressure', 'value_json': '3',
+                                 'evidence': '压力改为3MPa'}]}
+        with patch('reactor_agent.chat_service.interpret_turn', return_value=turn):
+            second = self.service.follow_up(first['run_id'], '压力改为3MPa', [])
+        self.assertEqual(second['status'], 'READY')
+        self.assertNotEqual(second['run_id'], first['run_id'])
+        revised_run = self.app.get_run(second['run_id'])
+        self.assertEqual(revised_run.parent_run_id, first['run_id'])
+        revised = self.app.current_state(revised_run)
+        self.assertEqual(revised['facts']['feed_pressure'], 3)
+        self.assertEqual(revised['facts']['feed_total'], original['facts']['feed_total'])
+        self.assertEqual(original['facts']['feed_pressure'], 2.5)
+        self.assertEqual(len(self.calls), 1)  # no second full extraction
+
+    def test_follow_up_rejects_ungrounded_patch(self):
+        first = self.service.start(TOLUENE_TEXT)
+        turn = {'action': 'revise', 'reply': '',
+                'corrections': [{'field': 'feed_pressure', 'value_json': '9',
+                                 'evidence': '压力改为3MPa'}]}
+        with patch('reactor_agent.chat_service.interpret_turn', return_value=turn):
+            with self.assertRaisesRegex(ValueError, '原文或量纲'):
+                self.service.follow_up(first['run_id'], '压力改为3MPa', [])
+        self.assertEqual(len(self.app.runs), 1)
+
+    def test_multiple_revisions_remember_latest_accepted_values(self):
+        first = self.service.start(TOLUENE_TEXT)
+        pressure = {'action': 'revise', 'reply': '', 'corrections': [
+            {'field': 'feed_pressure', 'value_json': '3', 'evidence': '压力改为3MPa'}]}
+        with patch('reactor_agent.chat_service.interpret_turn', return_value=pressure):
+            second = self.service.follow_up(first['run_id'], '压力改为3MPa', [])
+        temperature = {'action': 'revise', 'reply': '', 'corrections': [
+            {'field': 'feed_temperature', 'value_json': '400',
+             'evidence': '进料温度改为400摄氏度'}]}
+        with patch('reactor_agent.chat_service.interpret_turn', return_value=temperature):
+            third = self.service.follow_up(second['run_id'], '进料温度改为400摄氏度', [])
+        latest = self.app.current_state(self.app.get_run(third['run_id']))
+        self.assertEqual(latest['facts']['feed_pressure'], 3)
+        self.assertEqual(latest['facts']['feed_temperature'], 400)
+        self.assertEqual(latest['facts']['feed_total'], TOLUENE_FACTS['feed_total'])
+        self.assertEqual(len(self.calls), 1)
 
     def test_question_defaults_resume_same_run(self):
         self.facts = GASIFICATION_FACTS

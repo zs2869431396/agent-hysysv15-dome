@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI × HYSYS 项目完整流程图</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #182b34;
+      --muted: #52656c;
+      --line: #a8c1bd;
+      --paper: #f6f9f6;
+      --card: #ffffff;
+      --teal: #007f79;
+      --teal-light: #e7f5f1;
+      --blue: #285f9a;
+      --blue-light: #eaf2fc;
+      --gold: #946a12;
+      --gold-light: #fff5da;
+      --red: #a24747;
+      --red-light: #fff0ee;
+      --shadow: 0 12px 36px rgba(17, 55, 52, .09);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.6 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
+    .hero { background: linear-gradient(135deg, #063e42, #0b6a6c 60%, #32887a); color: #fff; padding: 48px max(22px, calc((100vw - 1120px)/2)); }
+    .hero .eyebrow { font-size: 12px; letter-spacing: .18em; text-transform: uppercase; opacity: .78; font-weight: 700; }
+    h1 { margin: 9px 0 8px; font-size: clamp(30px, 4vw, 49px); line-height: 1.18; letter-spacing: -.03em; }
+    .hero p { max-width: 810px; margin: 0; color: #daf4ee; font-size: 17px; }
+    .hero .sub { margin-top: 15px; font-size: 13px; color: #c7e4df; }
+    main { max-width: 1120px; padding: 28px 20px 80px; margin: auto; }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 15px; }
+    .controls span { color: var(--muted); font-size: 14px; margin-right: 4px; }
+    button { border: 1px solid #c5d6d2; background: #fff; color: var(--ink); border-radius: 999px; padding: 8px 16px; font: inherit; font-size: 14px; cursor: pointer; transition: .15s ease; }
+    button:hover, button:focus-visible { border-color: var(--teal); outline: none; transform: translateY(-1px); }
+    button.active { background: var(--teal); border-color: var(--teal); color: #fff; }
+    .key { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 24px; }
+    .key b { font-weight: 600; padding: 5px 11px; border-radius: 999px; font-size: 12px; }
+    .key .program { background: var(--teal-light); color: var(--teal); }
+    .key .model { background: var(--blue-light); color: var(--blue); }
+    .key .human { background: var(--gold-light); color: var(--gold); }
+    .key .hysys { background: #f0e9fb; color: #67428d; }
+    .flow { position: relative; }
+    .step { position: relative; max-width: 880px; margin: 0 auto; border: 1px solid #d9e8e2; border-left: 5px solid var(--teal); background: var(--card); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; }
+    .step.model { border-left-color: var(--blue); }
+    .step.human { border-left-color: var(--gold); }
+    .step.hysys { border-left-color: #734e9e; }
+    .step-head { display: flex; align-items: flex-start; gap: 13px; padding: 20px 23px 0; }
+    .num { flex: none; display: grid; place-items: center; width: 33px; height: 33px; border-radius: 10px; color: #fff; background: var(--teal); font-weight: 800; font-size: 14px; }
+    .model .num { background: var(--blue); }
+    .human .num { background: var(--gold); }
+    .hysys .num { background: #734e9e; }
+    h2 { margin: 0; font-size: 21px; line-height: 1.35; }
+    .kind { display: inline-block; margin: 4px 0 0; font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--teal); }
+    .model .kind { color: var(--blue); }
+    .human .kind { color: var(--gold); }
+    .hysys .kind { color: #734e9e; }
+    .step-body { padding: 9px 23px 20px 69px; }
+    .step-body p { margin: 0 0 9px; }
+    .io { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 12px; }
+    .io div { background: #f6f9f8; border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+    .io strong { color: #41655e; }
+    .code { margin-top: 12px; font-size: 12px; color: var(--muted); }
+    .code a { color: #236d88; text-decoration: none; border-bottom: 1px solid #9dbdc6; }
+    .code a:hover { color: #034d67; }
+    code { background: #edf4f1; border-radius: 4px; padding: 1px 4px; font-size: .93em; }
+    .arrow { display: flex; justify-content: center; align-items: center; height: 50px; color: var(--teal); font-size: 30px; line-height: 1; }
+    .branch { max-width: 1020px; margin: 0 auto; }
+    .branch-label { text-align: center; font-size: 13px; font-weight: 800; letter-spacing: .08em; color: var(--muted); margin: 2px 0 11px; }
+    .branch-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
+    .branch-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .choice { border: 1px solid #d7e4df; background: #fff; border-radius: 14px; padding: 17px 17px 15px; min-height: 126px; }
+    .choice h3 { margin: 0 0 5px; font-size: 16px; }
+    .choice p { margin: 0; font-size: 13px; color: var(--muted); }
+    .choice.blue { background: var(--blue-light); border-color: #cadef4; }
+    .choice.gold { background: var(--gold-light); border-color: #eedda9; }
+    .choice.red { background: var(--red-light); border-color: #f0ceca; }
+    .choice.green { background: var(--teal-light); border-color: #bbded7; }
+    .merge { text-align: center; color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+    .micro { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 11px 0; }
+    .micro span { background: #f1f7f4; border-radius: 8px; padding: 8px 6px; text-align: center; font-size: 12px; font-weight: 700; color: #285f57; }
+    .loop-note { text-align: center; margin: 11px auto 0; max-width: 850px; border-radius: 10px; background: #fff8e7; padding: 9px 12px; font-size: 13px; color: #7b5a15; }
+    .stage { margin: 26px auto 12px; max-width: 1020px; font-size: 13px; text-align: center; color: #67827b; text-transform: uppercase; letter-spacing: .12em; font-weight: 800; }
+    .bottom { max-width: 1020px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 28px auto 0; }
+    .note { background: #fff; border: 1px solid #dce9e3; border-radius: 14px; padding: 17px 18px; }
+    .note h3 { margin: 0 0 7px; font-size: 16px; }
+    .note p, .note li { font-size: 13px; color: var(--muted); }
+    .note p { margin: 0; }
+    .note ul { margin: 0; padding-left: 20px; }
+    body[data-mode="plan"] .execution-only, body[data-mode="execute"] .plan-only { opacity: .32; filter: grayscale(.7); }
+    body[data-mode="plan"] .execution-only *, body[data-mode="execute"] .plan-only * { pointer-events: none; }
+    @media (max-width: 680px) {
+      .hero { padding: 36px 21px; }
+      main { padding: 22px 13px 60px; }
+      .step-head { padding: 17px 16px 0; }
+      .step-body { padding: 10px 16px 18px; }
+      .io, .branch-grid, .branch-grid.three, .bottom { grid-template-columns: 1fr; }
+      .micro { grid-template-columns: repeat(2, 1fr); }
+      .choice { min-height: 0; }
+      h2 { font-size: 18px; }
+    }
+    @media print {
+      body { background: #fff; }
+      .hero { background: #fff; color: #111; padding: 10px 0 15px; }
+      .hero p, .hero .sub { color: #333; }
+      .controls { display: none; }
+      main { padding: 0; }
+      .step, .choice, .note { box-shadow: none; break-inside: avoid; }
+      body[data-mode="plan"] .execution-only, body[data-mode="execute"] .plan-only { opacity: 1; filter: none; }
+    }
+  </style>
+</head>
+<body data-mode="all">
+  <header class="hero">
+    <div class="eyebrow">Code verified · Streamlit / CLI → HYSYS</div>
+    <h1>AI × HYSYS 项目完整流程图</h1>
+    <p>从一句自然语言，到可执行的模拟规格，再到 HYSYS 计算结果。每张卡片写明执行者、输入、输出和代码位置。</p>
+    <div class="sub">依据当前本地代码；图中“试规划”只为查缺，“正式规划”才决定最终问题与规格。</div>
+  </header>
+
+  <main>
+    <div class="controls" aria-label="查看模式">
+      <span>突出显示：</span>
+      <button type="button" class="active" data-set-mode="all" aria-pressed="true">完整流程</button>
+      <button type="button" data-set-mode="plan" aria-pressed="false">只生成方案</button>
+      <button type="button" data-set-mode="execute" aria-pressed="false">执行 HYSYS</button>
+    </div>
+    <div class="key" aria-label="角色图例">
+      <b class="program">程序规则 / LangGraph</b><b class="model">LLM</b><b class="human">用户</b><b class="hysys">HYSYS COM</b>
+    </div>
+
+    <div class="flow">
+      <section class="step human" id="input">
+        <div class="step-head"><span class="num">01</span><div><h2>用户提交自然语言</h2><span class="kind">用户 · Streamlit 或 CLI</span></div></div>
+        <div class="step-body">
+          <p>描述进料、反应、温压和想比较的工况；选择“生成模拟方案”或“执行 HYSYS 模拟”。</p>
+          <div class="io"><div><strong>输入</strong>：一句或多句工艺需求</div><div><strong>输出</strong>：原始文本、执行模式和初始图状态</div></div>
+          <div class="code">代码：<a href="../reactor_agent/streamlit_app.py">streamlit_app.py L87–90、L162–171</a> · <a href="../reactor_agent/ui_backend.py">ui_backend.py L229–240</a></div>
+        </div>
+      </section>
+      <div class="arrow" aria-hidden="true">↓</div>
+
+      <section class="step model" id="intake">
+        <div class="step-head"><span class="num">02</span><div><h2>intake：首次 LLM 抽取</h2><span class="kind">LLM 提取 · 程序做格式与原文校验</span></div></div>
+        <div class="step-body">
+          <p>模型把原文整理为 <code>facts</code>：组分、进料组成、流量、温压、反应、转化率和工况。程序检查字段结构，并把数值找不到原文依据的字段名记进 <code>ungrounded</code>。</p>
+          <div class="io"><div><strong>输入</strong>：用户原话</div><div><strong>输出</strong>：<code>facts</code>、<code>ungrounded</code>、抽取错误</div></div>
+          <div class="code">代码：<a href="../reactor_agent/nodes/intake.py">intake.py L20–34</a> · <a href="../reactor_agent/extraction.py">extraction.py L592–663、L956–995</a></div>
+        </div>
+      </section>
+      <div class="arrow" aria-hidden="true">↓</div>
+
+      <section class="step" id="review">
+        <div class="step-head"><span class="num">03</span><div><h2>review：程序先查漏，再按需让 LLM 回原文核对</h2><span class="kind">程序主导 · 第二次 LLM 调用有条件</span></div></div>
+        <div class="step-body">
+          <p>程序先补回原文明示且可唯一确定的单位或组成基准，再调用同一套规划规则<strong>试规划、预检</strong>，从阻塞问题得到 <code>target_fields</code>。此时没有启动 HYSYS。若审核配置被关闭，整个 review 补漏环节会跳过。</p>
+          <div class="io"><div><strong>输入</strong>：原文、<code>facts</code>、初始状态</div><div><strong>输出</strong>：可补漏的目标字段、预检记录</div></div>
+          <div class="code">代码：<a href="../reactor_agent/input_recovery.py">input_recovery.py L19–111、L114–125</a> · <a href="../reactor_agent/review.py">review.py L122–137</a></div>
+        </div>
+      </section>
+      <div class="arrow" aria-hidden="true">↓</div>
+      <div class="branch" aria-label="review 补漏分支">
+        <div class="branch-label">是否有可补漏的目标字段？</div>
+        <div class="branch-grid">
+          <div class="choice green"><h3>没有 → 跳过第二次 LLM</h3><p>直接保留程序已核对的信息。需要用户确认的建模歧义，不让模型猜。</p></div>
+          <div class="choice blue"><h3>有 → 定向调用 LLM</h3><p>只核对 <code>target_fields</code>，逐字引用原文；程序检查范围、格式、证据、数值和单位，再次预检。不合格修正回退。</p></div>
+        </div>
+        <div class="merge">两条路径汇合 → 用更新后的事实重新计算 <code>ungrounded</code>；补漏调用失败则保留原事实。</div>
+      </div>
+      <div class="arrow" aria-hidden="true">↓</div>
+
+      <section class="step" id="plan">
+        <div class="step-head"><span class="num">04</span><div><h2>plan：正式形成模拟方案</h2><span class="kind">程序规则 · 最终放行条件在这里形成</span></div></div>
+        <div class="step-body">
+          <p>先合并用户已经回答的问题，再把事实归一化为 <code>ProcessRequest</code>，按规则选反应器、查工具能力，形成含假设与工况的 <code>ModelingPlan</code>。无阻塞时逐工况编译 <code>spec</code> JSON，并做离线规格预检。</p>
+          <div class="micro"><span>归一化</span><span>反应器选型</span><span>能力检查</span><span>编译 + 预检</span></div>
+          <div class="io"><div><strong>输入</strong>：已核对的 <code>facts</code>、用户回答</div><div><strong>输出</strong>：<code>blocking</code>、<code>decision</code>、<code>cases[].spec</code>、<code>status</code></div></div>
+          <div class="code">代码：<a href="../reactor_agent/nodes/plan.py">plan.py L82–177</a> · <a href="../reactor_agent/compiler.py">compiler.py L411–452</a> · <a href="../reactor_agent/selection.py">selection.py L363–547</a></div>
+        </div>
+      </section>
+      <div class="arrow" aria-hidden="true">↓</div>
+      <div class="branch" aria-label="plan 路由分支">
+        <div class="branch-label">plan 的结果决定图往哪里走</div>
+        <div class="branch-grid three">
+          <div class="choice gold"><h3>有阻塞问题 → ask</h3><p>LangGraph <code>interrupt</code> 暂停，向用户询问真实缺口；回答后用同一 <code>thread_id</code> 从检查点恢复，回到 <code>plan</code> 重新规划。</p></div>
+          <div class="choice red"><h3>不支持 / 校验失败 → explain</h3><p>不给工具下发可执行规格；报告说明选型、缺口或错误原因，不声称完成模拟。</p></div>
+          <div class="choice green"><h3>READY → execute 节点</h3><p>规格已通过预检。是否真正启动 HYSYS，还要看用户是否选择“执行模式”。</p></div>
+        </div>
+        <div class="loop-note">↶ ask 的回答返回 <strong>plan</strong>，不会重新从 intake 抽取整段原文；追问轮次有上限。</div>
+        <div class="code" style="text-align:center">代码：<a href="../reactor_agent/nodes/ask.py">ask.py L33–88</a> · <a href="../reactor_agent/graph.py">graph.py L78–91、L94–99</a></div>
+      </div>
+
+      <div class="stage">READY 后：方案模式与执行模式</div>
+      <div class="branch branch-grid" aria-label="执行模式分支">
+        <div class="choice green plan-only"><h3>只生成方案</h3><p><code>execute</code> 节点是空操作；保存规格和说明，状态保持 <code>READY</code>。没有 HYSYS 出口数值，也没有新建 .hsc。</p><div class="code"><a href="../reactor_agent/nodes/execute.py">execute.py L35–37</a> · <a href="../reactor_agent/report.py">report.py L218–220</a></div></div>
+        <div class="choice blue execution-only"><h3>执行 HYSYS</h3><p>逐工况调用适配器；同规格已有成功结果时跳过重复执行。出现连接失败或超时，停止后续工况。</p><div class="code"><a href="../reactor_agent/nodes/execute.py">execute.py L46–77</a></div></div>
+      </div>
+
+      <div class="execution-only">
+        <div class="arrow" aria-hidden="true">↓</div>
+        <section class="step" id="adapter">
+          <div class="step-head"><span class="num">05</span><div><h2>适配器：写 spec.json，启动独立工具进程</h2><span class="kind">程序规则 · 一工况一目录</span></div></div>
+          <div class="step-body">
+            <p>适配器创建唯一尝试目录，写入已编译的 <code>spec.json</code>，执行 <code>python -m hysys_tools --spec … --folder …</code>。工作站锁让 COM 操作串行；调用设置超时并保存 stdout/stderr。</p>
+            <div class="io"><div><strong>传给工具</strong>：规格文件路径、输出目录；文件内容含物性、进料、反应、反应器和假设</div><div><strong>并未传入</strong>：模型生成的 shell 命令；模型不能控制命令参数</div></div>
+            <div class="code">代码：<a href="../reactor_agent/adapters/hysys_cli.py">hysys_cli.py L300–386</a></div>
+          </div>
+        </section>
+        <div class="arrow" aria-hidden="true">↓</div>
+        <section class="step hysys" id="worker">
+          <div class="step-head"><span class="num">06</span><div><h2>hysys_tools：再次预检 → COM 建模 → 求解读回</h2><span class="kind">工具层 · HYSYS 负责数值计算</span></div></div>
+          <div class="step-body">
+            <p>子进程读取并校验规格；通过后用 <code>GetActiveObject('HYSYS.Application')</code> 连接正在运行的 HYSYS。创建新案例，配置物性/反应/物流/反应器，求解并读取出口，再做独立校验，保存 <code>.hsc</code>、<code>result.json</code> 和 <code>steps.json</code>。</p>
+            <div class="io"><div><strong>输入</strong>：单工况 <code>spec.json</code></div><div><strong>输出</strong>：案例文件、出口数据、热负荷、校验与操作步骤</div></div>
+            <div class="code">代码：<a href="../hysys_tools/main.py">main.py L555–626、L119–125、L170–175、L204–251</a> · <a href="../hysys_tools/reactor.py">reactor.py L676、L893</a></div>
+          </div>
+        </section>
+        <div class="arrow" aria-hidden="true">↓</div>
+        <section class="step" id="accept">
+          <div class="step-head"><span class="num">07</span><div><h2>适配器验收结果</h2><span class="kind">程序规则 · 结果文件是主要返回通道</span></div></div>
+          <div class="step-body">
+            <p>读取 <code>result.json</code>，核对工具状态、子进程退出码以及案例/出口/校验等证据，记录运行台账。每个工况最终得到 <code>PASS</code>、<code>PARTIAL</code> 或 <code>FAILED</code> 等状态。</p>
+            <div class="code">代码：<a href="../reactor_agent/adapters/hysys_cli.py">hysys_cli.py L349–374、L401–409</a> · <a href="../reactor_agent/nodes/execute.py">execute.py L56–88</a></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="arrow" aria-hidden="true">↓</div>
+      <section class="step" id="report">
+        <div class="step-head"><span class="num">08</span><div><h2>explain：生成中文说明和运行文件</h2><span class="kind">程序模板 · 不重新让 LLM 猜数值</span></div></div>
+        <div class="step-body">
+          <p>从图状态组织选型理由、待确认问题、假设和执行结果。方案模式明确写“尚未运行模拟”；执行模式用 HYSYS 读回值生成出口说明、工况对比和过程记录。保存 <code>state.json</code>、<code>explanation.txt</code> 以及已编译的各工况规格。</p>
+          <div class="io"><div><strong>方案模式</strong>：建模说明 + 规格，无模拟数值</div><div><strong>执行模式</strong>：HYSYS 结果 + 校验 + 案例文件</div></div>
+          <div class="code">代码：<a href="../reactor_agent/nodes/explain.py">explain.py L30–32</a> · <a href="../reactor_agent/report.py">report.py L132–228</a> · <a href="../reactor_agent/graph.py">graph.py L102–119</a></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="bottom">
+      <aside class="note"><h3>五份关键数据</h3><ul><li><code>facts</code>：用户原话里提取到了什么。</li><li><code>review</code>：查漏、补漏和拒绝理由。</li><li><code>ModelingPlan</code>：选型、能力、工况、假设与问题。</li><li><code>spec.json</code>：让工具怎么建模。</li><li><code>result.json</code>：HYSYS 实际算出什么。</li></ul></aside>
+      <aside class="note"><h3>读图时记住</h3><p>“review 试规划”调用与正式 <code>plan</code> 相同的规则来找缺口，但最终追问、放行和每工况规格仍由正式 <code>plan</code> 决定。方案模式在图中也经过 <code>execute</code> 节点，只是该节点不启动工具。</p></aside>
+    </div>
+  </main>
+  <script>
+    for (const button of document.querySelectorAll('[data-set-mode]')) {
+      button.addEventListener('click', () => {
+        document.body.dataset.mode = button.dataset.setMode;
+        for (const item of document.querySelectorAll('[data-set-mode]')) {
+          const selected = item === button;
+          item.classList.toggle('active', selected);
+          item.setAttribute('aria-pressed', String(selected));
+        }
+      });
+    }
+  </script>
+</body>
+</html>

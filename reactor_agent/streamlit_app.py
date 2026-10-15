@@ -96,11 +96,11 @@ def main():
                                 help='仅保存在当前会话内存中；留空使用环境变量或 .env。')
             app.settings.base, app.settings.model, app.settings.key = base.strip(), model.strip(), key.strip()
             st.caption('接口：/chat/completions')
-        st.caption('对话列表保存在当前浏览器会话；模拟文件保存到 agent-runs。')
+        st.caption('当前聊天会记住上一轮方案与结果；新建对话会开启独立上下文。关闭会话后聊天记录清空，模拟文件仍保存到 agent-runs。')
 
     history = st.session_state.conversations[st.session_state.conversation]
     st.title('HYSYS 模拟助手')
-    st.caption('描述你的反应体系和工况，我会整理方案、追问缺失信息并生成结果报告。')
+    st.caption('描述反应体系和工况；完成后可以继续追问结果，或直接说“把压力改为 3 MPa”来重新规划。')
     st.caption('模型抽取后先由程序预检；存在缺口时才调用模型定向补漏，仍未解决的条件会向你追问。')
     if not history:
         with st.chat_message('assistant'):
@@ -120,7 +120,8 @@ def main():
             if not payload:
                 continue
             st.markdown('**' + STATUS.get(payload['status'], payload['status']) + '** · '
-                        + ('HYSYS 执行' if payload['execute'] else '方案模式'))
+                        + ('会话回答' if payload.get('kind') == 'conversation' else
+                           'HYSYS 执行' if payload['execute'] else '方案模式'))
             if payload.get('process'):
                 with st.expander('完整运行过程', expanded=True):
                     render_process(payload['process'])
@@ -159,7 +160,7 @@ def main():
                             q['question'] + '：' + answers[q['id']] for q in payload['questions']),
                             pending=pending, answers=answers)
 
-    prompt = st.chat_input('输入模拟题目；追问时可输入“默认”', key='prompt',
+    prompt = st.chat_input('输入需求，也可以追问或修改上一轮参数', key='prompt',
                            submit_mode='disable')
     if prompt:
         if not pending and execute and not ready:
@@ -185,8 +186,16 @@ def send(service, history, text, *, pending=None, answers=None, **options):
                     latest['events'] = events
                     with process_box.container():
                         render_process(events)
+                previous = next((m['payload'] for m in reversed(history)
+                                 if m['role'] == 'assistant' and m.get('payload')
+                                 and m['payload'].get('run_id')), None)
                 payload = (service.answer(pending['run_id'], answers, on_progress=on_progress)
-                           if pending else service.start(text, on_progress=on_progress, **options))
+                           if pending else service.follow_up(
+                               previous['run_id'], text, history,
+                               on_progress=on_progress,
+                               execute=options.get('execute', False),
+                               basis=options.get('basis', 'mass_fraction'))
+                           if previous else service.start(text, on_progress=on_progress, **options))
                 running.update(label=STATUS.get(payload['status'], payload['status']),
                                state='error' if payload['status'] in ('FAILED', 'PARTIAL') else 'complete')
         history.extend([{'role': 'user', 'text': text},
